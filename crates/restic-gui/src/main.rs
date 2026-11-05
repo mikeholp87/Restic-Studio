@@ -1,8 +1,8 @@
 use adw::prelude::*;
 use gtk::glib;
-use restic_core::{Engine, Event, Profile, Repository};
+use restic_core::{Engine, Event, Outcome, Profile, Repository, Snapshot};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     os::unix::fs::MetadataExt,
     path::PathBuf,
     rc::Rc,
@@ -15,6 +15,127 @@ use std::{
 };
 
 type SelectedDestination = Rc<RefCell<Option<(PathBuf, u64)>>>;
+
+enum OperationUpdate {
+    Progress(String, Option<f64>),
+    Done(String, Vec<Snapshot>, Option<Outcome>),
+}
+
+fn progress_status(value: &serde_json::Value, restoring: bool) -> Option<(String, Option<f64>)> {
+    if value["message_type"] != "status" {
+        return None;
+    }
+    let files_done = value[if restoring {
+        "files_restored"
+    } else {
+        "files_done"
+    }]
+    .as_u64()
+    .unwrap_or(0);
+    let bytes_done = value[if restoring {
+        "bytes_restored"
+    } else {
+        "bytes_done"
+    }]
+    .as_u64()
+    .unwrap_or(0);
+    let total_files = value["total_files"].as_u64().filter(|n| *n > 0);
+    let total_bytes = value["total_bytes"].as_u64().filter(|n| *n > 0);
+    let files = total_files.map_or_else(
+        || files_done.to_string(),
+        |total| format!("{files_done} of {total}"),
+    );
+    let bytes = total_bytes.map_or_else(
+        || glib::format_size(bytes_done).to_string(),
+        |total| {
+            format!(
+                "{} of {}",
+                glib::format_size(bytes_done),
+                glib::format_size(total)
+            )
+        },
+    );
+    let fraction = total_bytes
+        .and_then(|_| value["percent_done"].as_f64())
+        .filter(|n| n.is_finite() && (0.0..=1.0).contains(n));
+    Some((
+        format!(
+            "{} {files} files • {bytes}",
+            if restoring { "Restored" } else { "Processed" }
+        ),
+        fraction,
+    ))
+}
+
+struct ProgressWindow {
+    window: gtk::Window,
+    status: gtk::Label,
+    bar: gtk::ProgressBar,
+    stop: gtk::Button,
+    close: gtk::Button,
+    finished: Rc<Cell<bool>>,
+}
+
+fn progress_window(
+    parent: &adw::ApplicationWindow,
+    title: &str,
+    cancel: Arc<AtomicBool>,
+) -> ProgressWindow {
+    let window = gtk::Window::builder()
+        .title(title)
+        .transient_for(parent)
+        .modal(true)
+        .default_width(480)
+        .build();
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 16);
+    content.set_margin_start(24);
+    content.set_margin_end(24);
+    content.set_margin_top(24);
+    content.set_margin_bottom(24);
+    let status = gtk::Label::new(Some("Preparing…"));
+    status.set_wrap(true);
+    status.set_xalign(0.0);
+    content.append(&status);
+    let bar = gtk::ProgressBar::new();
+    bar.set_show_text(true);
+    bar.set_text(Some("Waiting for Restic…"));
+    content.append(&bar);
+    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    actions.set_halign(gtk::Align::End);
+    let stop = gtk::Button::with_label("Stop safely");
+    let close = gtk::Button::with_label("Close");
+    close.set_sensitive(false);
+    actions.append(&stop);
+    actions.append(&close);
+    content.append(&actions);
+    window.set_child(Some(&content));
+    let finished = Rc::new(Cell::new(false));
+    let can_close = finished.clone();
+    window.connect_close_request(move |_| {
+        if can_close.get() {
+            glib::Propagation::Proceed
+        } else {
+            glib::Propagation::Stop
+        }
+    });
+    let stop_status = status.clone();
+    stop.connect_clicked(move |button| {
+        cancel.store(true, Ordering::Relaxed);
+        button.set_sensitive(false);
+        stop_status.set_text("Stopping safely… waiting for Restic to finish cleanup.");
+    });
+    let dismiss = window.clone();
+    close.connect_clicked(move |_| dismiss.close());
+    window.present();
+    ProgressWindow {
+        window,
+        status,
+        bar,
+        stop,
+        close,
+        finished,
+    }
+}
 
 fn destination_available(selection: &SelectedDestination) -> bool {
     selection.borrow().as_ref().is_none_or(|(path, device)| {
@@ -250,12 +371,18 @@ fn build(app: &adw::Application) {
     );
     let restore = gtk::Button::with_label("Restore selected path to new folder");
     restore_page.append(&restore);
-    let cancel = gtk::Button::with_label("Cancel backup gracefully");
-    content.append(&cancel);
     scroll.set_child(Some(&content));
     outer.append(&scroll);
     window.set_content(Some(&outer));
     let busy = Rc::new(RefCell::new(false));
+    let closing_busy = busy.clone();
+    window.connect_close_request(move |_| {
+        if *closing_busy.borrow() {
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
     {
         let (repo, password, snapshot, directory, selected_path, status, files, busy) = (
             repo.clone(),
@@ -353,9 +480,6 @@ fn build(app: &adw::Application) {
             });
         });
     }
-    let cancellation = Rc::new(RefCell::new(Arc::new(AtomicBool::new(false))));
-    let c = cancellation.clone();
-    cancel.connect_clicked(move |_| c.borrow().store(true, Ordering::Relaxed));
     {
         let (snapshot, selected_path, list, files) = (
             snapshot.clone(),
@@ -411,9 +535,9 @@ fn build(app: &adw::Application) {
             list.clone(),
         );
         let busy = busy.clone();
-        let cancellation = cancellation.clone();
         let stack = stack.clone();
         let selected_destination = selected_destination.clone();
+        let parent = window.clone();
         button.connect_clicked(move |_| {
             if *busy.borrow() {
                 return;
@@ -431,7 +555,12 @@ fn build(app: &adw::Application) {
             }
             *busy.borrow_mut() = true;
             let token = Arc::new(AtomicBool::new(false));
-            *cancellation.borrow_mut() = token.clone();
+            let progress_ui = match operation {
+                2 => Some(progress_window(&parent, "Backing up", token.clone())),
+                4 => Some(progress_window(&parent, "Restoring", token.clone())),
+                5 => Some(progress_window(&parent, "Previewing backup", token.clone())),
+                _ => None,
+            };
             let repository = Repository {
                 location: repo.text().to_string(),
             };
@@ -441,18 +570,19 @@ fn build(app: &adw::Application) {
             let id = snapshot.text().to_string();
             let selected = selected_path.text().to_string();
             let target = destination.text().to_string();
-            let (tx, rx) = mpsc::sync_channel::<(bool, String, Vec<restic_core::Snapshot>)>(16);
+            let (tx, rx) = mpsc::sync_channel::<OperationUpdate>(16);
             repo.set_editable(false);
             snapshot.set_editable(false);
             stack.set_sensitive(false);
             status.set_text(if operation == 5 { "Previewing backup… no snapshot will be created" } else { "Working…" });
             std::thread::spawn(move || {
                 let engine = Engine::default();
-                let result = (|| -> anyhow::Result<(String, Vec<restic_core::Snapshot>)> {
+                let result = (|| -> anyhow::Result<(String, Vec<Snapshot>, Option<Outcome>)> {
                     if operation == 1 {
                         return Ok((
                             "Snapshots loaded".into(),
                             engine.snapshots(&repository, &secret)?,
+                            None,
                         ));
                     }
                     let result = match operation {
@@ -468,16 +598,9 @@ fn build(app: &adw::Application) {
                             };
                             engine.backup(&profile, &secret, token, |event| {
                                 if let Event::Json(value) = event
-                                    && value["message_type"] == "status"
+                                    && let Some((message, fraction)) = progress_status(&value, false)
                                 {
-                                    let _ = tx.try_send((
-                                        false,
-                                        format!(
-                                            "Processed {} bytes • {} files",
-                                            value["bytes_done"], value["files_done"]
-                                        ),
-                                        vec![],
-                                    ));
+                                    let _ = tx.try_send(OperationUpdate::Progress(message, fraction));
                                 }
                             })?
                         }
@@ -493,24 +616,29 @@ fn build(app: &adw::Application) {
                             };
                             engine.preview_backup(&profile, &secret, token, |event| {
                                 if let Event::Json(value) = event
-                                    && value["message_type"] == "status"
+                                    && let Some((message, fraction)) = progress_status(&value, false)
                                 {
-                                    let _ = tx.try_send((
-                                        false,
-                                        format!("Previewing… {} files, {} bytes scanned", value["files_done"], value["bytes_done"]),
-                                        vec![],
-                                    ));
+                                    let _ = tx.try_send(OperationUpdate::Progress(message, fraction));
                                 }
                             })?
                         }
-                        _ => engine.restore_new(
+                        _ => engine.restore_new_with_progress(
                             &repository,
                             &secret,
                             &id,
                             &selected,
                             std::path::Path::new(&target),
+                            token,
+                            |event| {
+                                if let Event::Json(value) = event
+                                    && let Some((message, fraction)) = progress_status(&value, true)
+                                {
+                                    let _ = tx.try_send(OperationUpdate::Progress(message, fraction));
+                                }
+                            },
                         )?,
                     };
+                    let outcome = result.outcome.clone();
                     let mut message = if operation == 5 {
                         format!("Preview: {:?} • {:.1} seconds • no snapshot created", result.outcome, result.elapsed_seconds)
                     } else {
@@ -520,11 +648,18 @@ fn build(app: &adw::Application) {
                         message.push('\n');
                         message.push_str(&result.errors.join("\n"));
                     }
-                    Ok((message, vec![]))
+                    if outcome == Outcome::Cancelled {
+                        message.push_str(if operation == 4 {
+                            "\nRestore stopped; no destination was published."
+                        } else {
+                            "\nBackup stopped; refresh snapshots to check whether Restic created one before stopping."
+                        });
+                    }
+                    Ok((message, vec![], Some(outcome)))
                 })();
-                let (message, snapshots) =
-                    result.unwrap_or_else(|e| (format!("Operation failed: {e}"), vec![]));
-                let _ = tx.send((true, message, snapshots));
+                let (message, snapshots, outcome) = result
+                    .unwrap_or_else(|e| (format!("Operation failed: {e}"), vec![], None));
+                let _ = tx.send(OperationUpdate::Done(message, snapshots, outcome));
             });
             let status = status.clone();
             let list = list.clone();
@@ -532,9 +667,10 @@ fn build(app: &adw::Application) {
             let repo = repo.clone();
             let snapshot = snapshot.clone();
             let stack = stack.clone();
+            let mut determinate = false;
             glib::timeout_add_local(Duration::from_millis(100), move || {
                 loop {
-                    let (done, message, snapshots) = match rx.try_recv() {
+                    let update = match rx.try_recv() {
                         Ok(value) => value,
                         Err(mpsc::TryRecvError::Empty) => break,
                         Err(mpsc::TryRecvError::Disconnected) => {
@@ -543,30 +679,69 @@ fn build(app: &adw::Application) {
                             snapshot.set_editable(true);
                             stack.set_sensitive(true);
                             status.set_text("Operation ended unexpectedly");
+                            if let Some(ui) = &progress_ui {
+                                ui.window.set_title(Some("Operation failed"));
+                                ui.status.set_text("Operation ended unexpectedly");
+                                ui.bar.set_text(Some("Failed"));
+                                ui.stop.set_sensitive(false);
+                                ui.close.set_sensitive(true);
+                                ui.finished.set(true);
+                            }
                             return glib::ControlFlow::Break;
                         }
                     };
-                    status.set_text(&message);
-                    if !snapshots.is_empty() {
-                        while let Some(child) = list.first_child() {
-                            list.remove(&child);
+                    match update {
+                        OperationUpdate::Progress(message, fraction) => {
+                            status.set_text(&message);
+                            if let Some(ui) = &progress_ui {
+                                ui.status.set_text(&message);
+                                if let Some(fraction) = fraction {
+                                    determinate = true;
+                                    ui.bar.set_fraction(fraction);
+                                    ui.bar.set_text(Some(&format!("{:.0}%", fraction * 100.0)));
+                                }
+                            }
                         }
-                        for snapshot in snapshots {
-                            let label = gtk::Label::new(Some(&format!(
-                                "{}  {}",
-                                snapshot.id, snapshot.time
-                            )));
-                            label.set_xalign(0.0);
-                            list.append(&label);
+                        OperationUpdate::Done(message, snapshots, outcome) => {
+                            status.set_text(&message);
+                            if let Some(ui) = &progress_ui {
+                                ui.window.set_title(Some("Operation finished"));
+                                ui.status.set_text(&message.lines().take(3).collect::<Vec<_>>().join("\n"));
+                                ui.bar.set_text(Some(match outcome {
+                                    Some(Outcome::Success) => "Complete",
+                                    Some(Outcome::Cancelled) => "Stopped",
+                                    _ => "Finished with errors",
+                                }));
+                                if outcome == Some(Outcome::Success) {
+                                    ui.bar.set_fraction(1.0);
+                                }
+                                ui.stop.set_sensitive(false);
+                                ui.close.set_sensitive(true);
+                                ui.finished.set(true);
+                            }
+                            if !snapshots.is_empty() {
+                                while let Some(child) = list.first_child() {
+                                    list.remove(&child);
+                                }
+                                for snapshot in snapshots {
+                                    let label = gtk::Label::new(Some(&format!(
+                                        "{}  {}",
+                                        snapshot.id, snapshot.time
+                                    )));
+                                    label.set_xalign(0.0);
+                                    list.append(&label);
+                                }
+                            }
+                            *busy.borrow_mut() = false;
+                            repo.set_editable(true);
+                            snapshot.set_editable(true);
+                            stack.set_sensitive(true);
+                            return glib::ControlFlow::Break;
                         }
                     }
-                    if done {
-                        *busy.borrow_mut() = false;
-                        repo.set_editable(true);
-                        snapshot.set_editable(true);
-                        stack.set_sensitive(true);
-                        return glib::ControlFlow::Break;
-                    }
+                }
+                if !determinate && let Some(ui) = &progress_ui {
+                    ui.bar.pulse();
                 }
                 glib::ControlFlow::Continue
             });
@@ -581,6 +756,33 @@ unsafe fn libc_geteuid() -> u32 {
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, os::unix::fs::MetadataExt, rc::Rc};
+    #[test]
+    fn backup_and_restore_progress_use_reported_fields() {
+        let backup = serde_json::json!({
+            "message_type": "status", "files_done": 2, "total_files": 4,
+            "bytes_done": 50, "total_bytes": 100, "percent_done": 0.5
+        });
+        let restore = serde_json::json!({
+            "message_type": "status", "files_restored": 1, "total_files": 2,
+            "bytes_restored": 25, "total_bytes": 100, "percent_done": 0.25
+        });
+        let (backup_text, backup_fraction) = super::progress_status(&backup, false).unwrap();
+        let (restore_text, restore_fraction) = super::progress_status(&restore, true).unwrap();
+        assert!(backup_text.contains("Processed 2 of 4 files"));
+        assert!(restore_text.contains("Restored 1 of 2 files"));
+        assert_eq!(backup_fraction, Some(0.5));
+        assert_eq!(restore_fraction, Some(0.25));
+        assert_eq!(
+            super::progress_status(&serde_json::json!({"message_type":"summary"}), false),
+            None
+        );
+        assert_eq!(
+            super::progress_status(&serde_json::json!({"message_type":"status"}), true)
+                .unwrap()
+                .1,
+            None
+        );
+    }
     #[test]
     fn destination_selection_preserves_existing_repository() -> std::io::Result<()> {
         let parent = tempfile::tempdir()?;

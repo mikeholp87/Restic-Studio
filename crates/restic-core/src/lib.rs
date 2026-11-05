@@ -495,6 +495,30 @@ impl Engine {
         selected: &str,
         destination: &Path,
     ) -> Result<JobResult> {
+        self.restore_new_with_progress(
+            repo,
+            password,
+            snapshot,
+            selected,
+            destination,
+            Arc::default(),
+            |_| {},
+        )
+    }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "restore selection and cancellation are separate safety inputs"
+    )]
+    pub fn restore_new_with_progress(
+        &self,
+        repo: &Repository,
+        password: &str,
+        snapshot: &str,
+        selected: &str,
+        destination: &Path,
+        cancel: Arc<AtomicBool>,
+        event: impl FnMut(Event),
+    ) -> Result<JobResult> {
         snapshot_id(snapshot)?;
         ensure!(
             selected.starts_with('/')
@@ -573,7 +597,11 @@ impl Engine {
             "never".into(),
             "--verify".into(),
         ];
-        let result = self.run(repo, password, &args, Arc::default(), |_| {})?;
+        let mut result = self.run(repo, password, &args, cancel.clone(), event)?;
+        if cancel.load(Ordering::Relaxed) || result.outcome == Outcome::Cancelled {
+            result.outcome = Outcome::Cancelled;
+            return Ok(result);
+        }
         if result.outcome != Outcome::Success {
             bail!(
                 "Restore failed: {:?}; destination unchanged",

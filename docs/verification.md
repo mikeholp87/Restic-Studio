@@ -76,6 +76,14 @@ root-owned snapshot files with owner-only permissions. The application does not 
 Restic as root or repair repository ownership. Access and recovery of that repository
 remain unverified.
 
+## Progress and cancellation — 2026-11-05
+
+Backup, preview, and restore now show a modal progress window with a graceful Stop
+control. Progress uses Restic JSON status fields; the bar is indeterminate until
+Restic reports a total. A disposable restore test verifies that a cancellation
+request leaves the destination unpublished. Core/runner and GUI tests and Clippy
+pass. The GTK window itself could not be exercised in this sandbox display session.
+
 ## Backup and restore audit — 2026-11-05
 
 Reviewed the GUI destination selection, subprocess boundary, profile validation,

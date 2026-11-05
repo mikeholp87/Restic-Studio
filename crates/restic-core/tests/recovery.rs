@@ -1,5 +1,8 @@
 use restic_core::*;
-use std::{fs, sync::Arc};
+use std::{
+    fs,
+    sync::{Arc, atomic::AtomicBool},
+};
 #[test]
 fn disposable_recovery() -> anyhow::Result<()> {
     let temp = tempfile::tempdir()?;
@@ -76,6 +79,22 @@ fn disposable_recovery() -> anyhow::Result<()> {
         Outcome::Success
     );
     assert_eq!(engine.snapshots(&repo, password)?.len(), 2);
+    let cancelled_destination = temp.path().join("cancelled-restore");
+    assert_eq!(
+        engine
+            .restore_new_with_progress(
+                &repo,
+                password,
+                &first,
+                source.to_str().unwrap(),
+                &cancelled_destination,
+                Arc::new(AtomicBool::new(true)),
+                |_| {},
+            )?
+            .outcome,
+        Outcome::Cancelled
+    );
+    assert!(!cancelled_destination.exists());
     let destination = temp.path().join("restored");
     engine.restore_new(
         &repo,

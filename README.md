@@ -58,6 +58,12 @@ same. A successful preview does not verify stored backup data or guarantee that 
 later backup will succeed; it checks the current source, repository access, and
 Restic options.
 
+Backup, preview, and restore open a progress window. Its percentage is shown only
+when Restic reports a total; otherwise the bar pulses while work continues.
+**Stop safely** requests a graceful Restic interrupt. A stopped backup may still
+have created a snapshot, so refresh the snapshot list before retrying. A stopped
+restore does not publish its staged files to the selected destination.
+
 Profile JSON contains `id`, `name`, `repository: {"location": "/absolute/repo"}`,
 `sources: ["/absolute/source"]`, `excludes: []`, and `one_file_system: false`.
 `run-profile` loads `$XDG_STATE_HOME/restic-studio/profiles/ID.json`
