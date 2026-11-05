@@ -41,7 +41,7 @@ repository during backup.
 ## Runner
 
 Commands: `version`, `init REPO`, `snapshots REPO`, `ls REPO SNAPSHOT DIRECTORY`, `check REPO`,
-`backup PROFILE.json`, `run-profile ID`, and
+`preview PROFILE.json`, `backup PROFILE.json`, `run-profile ID`, and
 `restore REPO FULL_SNAPSHOT_ID SNAPSHOT_PATH NEW_DIRECTORY`.
 All paths must be absolute. Restore reconstructs snapshot-relative paths inside a
 new destination, preserving existing destinations. The parent must be private,
@@ -51,6 +51,12 @@ are prohibited restore parents.
 Supply a password using a protected stdin pipe, closed after its final newline.
 There is no interactive hidden terminal prompt yet. Never put passwords in command
 arguments or shell history. The application does not save passwords.
+
+Use **Preview backup (no snapshot)** in the GUI to scan a selected source without
+uploading data or creating a snapshot. The runner's `preview PROFILE.json` does the
+same. A successful preview does not verify stored backup data or guarantee that a
+later backup will succeed; it checks the current source, repository access, and
+Restic options.
 
 Profile JSON contains `id`, `name`, `repository: {"location": "/absolute/repo"}`,
 `sources: ["/absolute/source"]`, `excludes: []`, and `one_file_system: false`.
@@ -63,5 +69,5 @@ on stdin and does not yet constitute unattended scheduling.
 See [architecture](docs/architecture.md), [verification](docs/verification.md), and
 [installation](docs/installation.md), and [remaining work](docs/remaining-work.md). No automatic unlock, forget, prune,
 mount, partition, ownership repair, or system configuration changes are performed.
-No Debian package is claimed: the native GUI must build and pass recovery acceptance
-before a complete application package can be delivered.
+The development Debian package is described in [installation](docs/installation.md).
+Desktop recovery acceptance and unattended backup support remain unverified.

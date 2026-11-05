@@ -128,6 +128,15 @@ fn build(app: &adw::Application) {
     });
     header.pack_end(&theme);
     outer.append(&header);
+    let status = gtk::Label::new(Some("Ready. Health has not been verified."));
+    status.set_wrap(true);
+    status.set_xalign(0.0);
+    status.set_selectable(true);
+    status.set_margin_start(20);
+    status.set_margin_end(20);
+    status.set_margin_top(8);
+    status.set_margin_bottom(8);
+    outer.append(&status);
     let scroll = gtk::ScrolledWindow::builder().vexpand(true).build();
     let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
     content.set_margin_start(28);
@@ -196,6 +205,8 @@ fn build(app: &adw::Application) {
     for button in [&buttons[0], &buttons[2], &buttons[3]] {
         backup_actions.append(button);
     }
+    let preview = gtk::Button::with_label("Preview backup (no snapshot)");
+    backup_actions.append(&preview);
     backup_page.append(&backup_actions);
     restore_page.append(&buttons[1]);
     stack.add_titled(&backup_page, Some("backup"), "Backup");
@@ -241,11 +252,6 @@ fn build(app: &adw::Application) {
     restore_page.append(&restore);
     let cancel = gtk::Button::with_label("Cancel backup gracefully");
     content.append(&cancel);
-    let status = gtk::Label::new(Some("Ready. Health has not been verified."));
-    status.set_wrap(true);
-    status.set_xalign(0.0);
-    status.set_selectable(true);
-    content.append(&status);
     scroll.set_child(Some(&content));
     outer.append(&scroll);
     window.set_content(Some(&outer));
@@ -392,6 +398,7 @@ fn build(app: &adw::Application) {
         .into_iter()
         .enumerate()
         .chain(std::iter::once((4, restore)))
+        .chain(std::iter::once((5, preview)))
     {
         let (repo, source, password, snapshot, selected_path, destination, status, list) = (
             repo.clone(),
@@ -438,7 +445,7 @@ fn build(app: &adw::Application) {
             repo.set_editable(false);
             snapshot.set_editable(false);
             stack.set_sensitive(false);
-            status.set_text("Working…");
+            status.set_text(if operation == 5 { "Previewing backup… no snapshot will be created" } else { "Working…" });
             std::thread::spawn(move || {
                 let engine = Engine::default();
                 let result = (|| -> anyhow::Result<(String, Vec<restic_core::Snapshot>)> {
@@ -475,6 +482,27 @@ fn build(app: &adw::Application) {
                             })?
                         }
                         3 => engine.run(&repository, &secret, &["check".into()], token, |_| {})?,
+                        5 => {
+                            let profile = Profile {
+                                id: "manual".into(),
+                                name: "Manual backup preview".into(),
+                                repository,
+                                sources: vec![source.into()],
+                                excludes: vec![],
+                                one_file_system: false,
+                            };
+                            engine.preview_backup(&profile, &secret, token, |event| {
+                                if let Event::Json(value) = event
+                                    && value["message_type"] == "status"
+                                {
+                                    let _ = tx.try_send((
+                                        false,
+                                        format!("Previewing… {} files, {} bytes scanned", value["files_done"], value["bytes_done"]),
+                                        vec![],
+                                    ));
+                                }
+                            })?
+                        }
                         _ => engine.restore_new(
                             &repository,
                             &secret,
@@ -483,10 +511,11 @@ fn build(app: &adw::Application) {
                             std::path::Path::new(&target),
                         )?,
                     };
-                    let mut message = format!(
-                        "Outcome: {:?} • {:.1} seconds",
-                        result.outcome, result.elapsed_seconds
-                    );
+                    let mut message = if operation == 5 {
+                        format!("Preview: {:?} • {:.1} seconds • no snapshot created", result.outcome, result.elapsed_seconds)
+                    } else {
+                        format!("Outcome: {:?} • {:.1} seconds", result.outcome, result.elapsed_seconds)
+                    };
                     if !result.errors.is_empty() {
                         message.push('\n');
                         message.push_str(&result.errors.join("\n"));

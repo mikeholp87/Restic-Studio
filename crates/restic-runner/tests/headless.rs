@@ -40,6 +40,16 @@ fn headless_profile_and_activity() -> anyhow::Result<()> {
         one_file_system: false,
     };
     restic_core::save_profile(&profile, &directory)?;
+    assert!(
+        invoke(&[
+            "preview",
+            directory.join("test-profile.json").to_str().unwrap()
+        ])?
+        .status
+        .success()
+    );
+    let before = invoke(&["snapshots", repository.to_str().unwrap()])?;
+    assert_eq!(String::from_utf8(before.stdout)?.trim(), "[]");
     let result = invoke(&["run-profile", "test-profile"])?;
     assert!(
         result.status.success(),

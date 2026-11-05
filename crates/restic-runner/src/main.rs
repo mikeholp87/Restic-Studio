@@ -28,7 +28,7 @@ fn main() -> Result<()> {
     }
     if args.is_empty() {
         println!(
-            "Restic Studio runner\nCommands: version | init REPO | snapshots REPO | ls REPO SNAPSHOT DIRECTORY | check REPO | backup PROFILE.json | run-profile ID | restore REPO SNAPSHOT PATH NEW_DIRECTORY\nSupply password on stdin. GTK client: restic-studio-gui."
+            "Restic Studio runner\nCommands: version | init REPO | snapshots REPO | ls REPO SNAPSHOT DIRECTORY | check REPO | preview PROFILE.json | backup PROFILE.json | run-profile ID | restore REPO SNAPSHOT PATH NEW_DIRECTORY\nSupply password on stdin. GTK client: restic-studio-gui."
         );
         return Ok(());
     }
@@ -63,7 +63,7 @@ fn main() -> Result<()> {
             Arc::default(),
             |_| {},
         )?,
-        "backup" | "run-profile" => {
+        "backup" | "run-profile" | "preview" => {
             let argument = args.get(1).context("Profile missing")?;
             let path = if args[0] == "run-profile" {
                 restic_core::valid_id(argument)?;
@@ -81,14 +81,21 @@ fn main() -> Result<()> {
                 unsafe { libc_flock(lock.as_raw_fd()) },
                 "Another Studio job is active"
             );
-            let result = engine.backup(&profile, &secret, Arc::default(), |event| {
+            let mut progress = |event| {
                 if let Event::Json(value) = event
                     && value.get("message_type").and_then(|v| v.as_str()) == Some("status")
                 {
                     eprintln!("bytes_done={}", value["bytes_done"]);
                 }
-            })?;
-            restic_core::record(&directory, &profile.id, &result)?;
+            };
+            let result = if args[0] == "preview" {
+                engine.preview_backup(&profile, &secret, Arc::default(), &mut progress)?
+            } else {
+                engine.backup(&profile, &secret, Arc::default(), &mut progress)?
+            };
+            if args[0] != "preview" {
+                restic_core::record(&directory, &profile.id, &result)?;
+            }
             result
         }
         "restore" => {

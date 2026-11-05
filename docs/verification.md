@@ -59,6 +59,23 @@ System installation was not performed because the execution environment rejected
 the privileged `dpkg -i` request. GUI launch and desktop integration remain
 unverified, and the package must not be treated as a production backup release.
 
+## Backup preview — 2026-11-05
+
+Added Restic `backup --dry-run` to the shared engine, GUI, and runner. The disposable
+recovery test verifies that preview completes and snapshot listing stays empty. The
+headless runner test independently invokes preview and confirms no snapshot exists
+before its synthetic backup. Core/runner and GUI tests and Clippy pass.
+
+No dry-run was executed against the user's external repository: its password is not
+available to this process. Desktop GUI interaction remains unverified because the
+sandbox cannot connect to the display. The `/home` source includes an unreadable
+`lost+found` directory, so its preview may report a partial result.
+
+The user's GUI preview of the existing `DebianBackup` repository failed while reading
+root-owned snapshot files with owner-only permissions. The application does not run
+Restic as root or repair repository ownership. Access and recovery of that repository
+remain unverified.
+
 ## Backup and restore audit — 2026-11-05
 
 Reviewed the GUI destination selection, subprocess boundary, profile validation,

@@ -36,6 +36,13 @@ fn disposable_recovery() -> anyhow::Result<()> {
     };
     assert_eq!(
         engine
+            .preview_backup(&profile, password, Arc::default(), |_| {})?
+            .outcome,
+        Outcome::Success
+    );
+    assert!(engine.snapshots(&repo, password)?.is_empty());
+    assert_eq!(
+        engine
             .backup(&profile, password, Arc::default(), |_| {})?
             .outcome,
         Outcome::Success

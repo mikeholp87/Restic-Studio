@@ -379,6 +379,25 @@ impl Engine {
         cancel: Arc<AtomicBool>,
         event: impl FnMut(Event),
     ) -> Result<JobResult> {
+        self.backup_with_mode(profile, password, cancel, event, false)
+    }
+    pub fn preview_backup(
+        &self,
+        profile: &Profile,
+        password: &str,
+        cancel: Arc<AtomicBool>,
+        event: impl FnMut(Event),
+    ) -> Result<JobResult> {
+        self.backup_with_mode(profile, password, cancel, event, true)
+    }
+    fn backup_with_mode(
+        &self,
+        profile: &Profile,
+        password: &str,
+        cancel: Arc<AtomicBool>,
+        event: impl FnMut(Event),
+        dry_run: bool,
+    ) -> Result<JobResult> {
         profile.validate()?;
         ensure!(
             Path::new(&profile.repository.location)
@@ -391,6 +410,9 @@ impl Engine {
             "--tag".into(),
             format!("restic-studio:{}", profile.id).into(),
         ];
+        if dry_run {
+            args.push("--dry-run".into());
+        }
         if profile.one_file_system {
             args.push("--one-file-system".into());
         }
