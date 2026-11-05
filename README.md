@@ -1,79 +1,124 @@
-# Restic Studio — development preview
+# Restic Studio
 
-Rust backup/recovery core, headless runner, and GTK4/libadwaita client source.
-This is **not a production-ready release**. The complete roadmap is not implemented.
+Native GTK4 backup and restore manager for Linux, powered by the [Restic](https://restic.net/) CLI. Restic Studio is an **early development preview**, not a verified daily backup or full-system recovery solution.
 
-## Build
+It provides a simple graphical path from a local folder to an encrypted Restic repository, including repositories on mounted external drives. The repository password is entered for each operation and is not saved by the app.
 
-The core and runner build with Rust stable and the system Restic executable:
+## What works today
+
+| Area | Current behavior |
+| --- | --- |
+| Repositories | Initialize a new, empty local repository or open an existing one. Choose a mounted external-drive folder; the picker recognizes a repository in that folder or its single immediate child. |
+| Backup | Select one source folder, preview with Restic `backup --dry-run`, or create a snapshot with **Back Up Now**. A preview does not upload data or create a snapshot. |
+| Progress | Backup, preview, and restore show a popup with Restic's reported file and byte counts. The bar shows a percentage only when Restic reports a total. |
+| Stop | **Stop safely** requests a graceful interrupt and waits for Restic to exit. A stopped backup may still have created a snapshot; refresh the list before retrying. |
+| Snapshots | List snapshots and show up to the first 500 entries returned for a selected directory. |
+| Restore | Restore one selected file or directory into a **new** destination folder. Restic verifies the restored data; the app stages it privately and publishes it without replacing an existing destination. A stopped restore does not publish the staged files. |
+| Checks | Run Restic's repository structure check. A successful backup alone is not a health check. |
+| Runner | Use the separate `restic-studio` CLI for the same core operations and JSON profile files. It records headless backup activity under XDG state. |
+| Appearance | System, light, and dark theme selection in the GTK interface. |
+
+This release supports **local filesystem repositories only**. An external drive must already be mounted; Restic Studio does not mount, format, or repair it.
+
+## Install on Debian
+
+The development package for the tested Debian forky/sid environment is `restic-studio_0.1.0-4_amd64.deb`. It is not attached to GitHub as a release artifact; build it from this source checkout if needed. The package depends on the system Restic, GTK4, libadwaita, and glibc. It has not been verified on Debian 13, KDE, or X11.
 
 ```sh
-cargo build --offline
-cargo test --offline
-cargo fmt --check
-cargo clippy --offline --all-targets --all-features -- -D warnings
-cargo build --offline --release
-target/release/restic-studio version
+cargo build --release
+cargo build --manifest-path crates/restic-gui/Cargo.toml --release
+sh packaging/debian/build.sh
+sudo apt install ./restic-studio_0.1.0-4_amd64.deb
 ```
 
-For the graphical client, install Debian development dependencies in an environment
-where package installation is authorized:
+Launch **Restic Studio** from the application menu or run `restic-studio-gui`. Ordinary use does not require `sudo`. See [installation and uninstall details](docs/installation.md).
+
+For local development, install `build-essential`, `pkg-config`, `libgtk-4-dev`, `libadwaita-1-dev`, and `restic`, then run:
 
 ```sh
-sudo apt install build-essential pkg-config libgtk-4-dev libadwaita-1-dev restic
-cargo build --manifest-path crates/restic-gui/Cargo.toml
+cargo build
+cargo test
 cargo run --manifest-path crates/restic-gui/Cargo.toml
 ```
 
-The GUI is a separate Cargo workspace so the runner builds independently.
-The GUI builds on the current Debian forky host; desktop launch and Debian 13
-compatibility have not been verified in this sandbox.
+The GUI is a separate Cargo workspace so the core and runner can build without GTK development libraries. The tested environment used Rust 1.96.0, Restic 0.19.1, GTK 4.24.1, and libadwaita 1.10.0. The package currently declares Restic 0.19 or newer and the native library versions used for this build; other combinations require validation.
 
-In the GUI, choose **Choose external drive or destination…** and select a mounted
-drive folder. If the folder itself or exactly one immediate child is an existing
-Restic repository, the picker uses that repository. If several child repositories
-exist, select the intended repository folder directly. A new repository uses the
-drive folder's `restic-studio` subfolder. Click **Initialize empty repository**
-only for a new, empty destination. If the drive is missing, backup stops because
-its repository configuration is unavailable; the app never creates a replacement
-repository during backup.
+## First backup
 
-## Runner
+1. Choose a folder on a mounted external drive. Select the repository directory itself when several repositories are present. For a new destination, the picker proposes a `restic-studio` child directory.
+2. For a new repository, enter a strong password and choose **Initialize empty repository**. For an existing repository, enter its current password. Losing that password can make recovery impossible.
+3. Select a source folder. For a personal backup, choose your own home directory (for example `/home/your-user`). Selecting all of `/home` may include files your account cannot read.
+4. Choose **Preview backup (no snapshot)**. The preview checks current access and options but does not prove that a later backup or restore will succeed.
+5. Choose **Back Up Now** and watch the progress popup. Check the final outcome. Restic exit code 3 is reported as a partial backup, which may have created an incomplete snapshot.
+6. Refresh snapshots and run **Check repository**. Practice restoring a file to a new folder before relying on the backup.
 
-Commands: `version`, `init REPO`, `snapshots REPO`, `ls REPO SNAPSHOT DIRECTORY`, `check REPO`,
-`preview PROFILE.json`, `backup PROFILE.json`, `run-profile ID`, and
-`restore REPO FULL_SNAPSHOT_ID SNAPSHOT_PATH NEW_DIRECTORY`.
-All paths must be absolute. Restore reconstructs snapshot-relative paths inside a
-new destination, preserving existing destinations. The parent must be private,
-owned by the invoking user, and already exist. `/`, `/etc`, `/usr`, and `/boot`
-are prohibited restore parents.
+The app refuses to back up if the selected repository is missing, and validates that a source and destination do not contain one another. It checks the selected destination's device before each GUI operation. It does not silently create a replacement repository when a drive is unavailable.
 
-Supply a password using a protected stdin pipe, closed after its final newline.
-There is no interactive hidden terminal prompt yet. Never put passwords in command
-arguments or shell history. The application does not save passwords.
+## Restore a file or directory
 
-Use **Preview backup (no snapshot)** in the GUI to scan a selected source without
-uploading data or creating a snapshot. The runner's `preview PROFILE.json` does the
-same. A successful preview does not verify stored backup data or guarantee that a
-later backup will succeed; it checks the current source, repository access, and
-Restic options.
+1. Open the **Restore** tab, enter the repository password, and refresh snapshots.
+2. Select a snapshot, browse its directory, and select one file or folder.
+3. Enter an absolute path for a **new** destination folder beneath a private directory owned by you, such as `/home/your-user/restored-file`. The parent must exist and must not be writable by other users.
+4. Start the restore and review its popup and final result. The app keeps the original snapshot path beneath the new destination folder.
 
-Backup, preview, and restore open a progress window. Its percentage is shown only
-when Restic reports a total; otherwise the bar pulses while work continues.
-**Stop safely** requests a graceful Restic interrupt. A stopped backup may still
-have created a snapshot, so refresh the snapshot list before retrying. A stopped
-restore does not publish its staged files to the selected destination.
+Existing destinations are never overwritten. Restores under `/`, `/etc`, `/usr`, or `/boot` are blocked. The app does not restore over a running system or change disk partitions.
 
-Profile JSON contains `id`, `name`, `repository: {"location": "/absolute/repo"}`,
-`sources: ["/absolute/source"]`, `excludes: []`, and `one_file_system: false`.
-`run-profile` loads `$XDG_STATE_HOME/restic-studio/profiles/ID.json`
-(default `~/.local/state/restic-studio/profiles/ID.json`). It requires credentials
-on stdin and does not yet constitute unattended scheduling.
+## Headless runner
 
-## Status and safety
+`restic-studio` supports:
 
-See [architecture](docs/architecture.md), [verification](docs/verification.md), and
-[installation](docs/installation.md), and [remaining work](docs/remaining-work.md). No automatic unlock, forget, prune,
-mount, partition, ownership repair, or system configuration changes are performed.
-The development Debian package is described in [installation](docs/installation.md).
-Desktop recovery acceptance and unattended backup support remain unverified.
+```text
+version
+init REPO
+snapshots REPO
+ls REPO FULL_SNAPSHOT_ID DIRECTORY
+check REPO
+preview PROFILE.json
+backup PROFILE.json
+run-profile ID
+restore REPO FULL_SNAPSHOT_ID SNAPSHOT_PATH NEW_DIRECTORY
+```
+
+Repository and source paths must be absolute. A profile file has this structure:
+
+```json
+{
+  "id": "personal",
+  "name": "Personal files",
+  "repository": { "location": "/path/to/mounted-drive/ResticRepo" },
+  "sources": ["/home/your-user"],
+  "excludes": [],
+  "one_file_system": false
+}
+```
+
+The runner reads the password from standard input through a protected pipe. Do not put it in command arguments, environment variables, shell history, or a profile file. `run-profile ID` reads `$XDG_STATE_HOME/restic-studio/profiles/ID.json` (usually `~/.local/state/restic-studio/profiles/ID.json`). It requires credentials on stdin and is **not** an unattended scheduler. Backup jobs use a local lock and append activity to XDG state; preview does not record a backup job.
+
+## Security and recovery boundaries
+
+- The GUI never runs as root. Both source files and repository files must be readable by the current user. A repository with root-owned, owner-only files will fail to open until its ownership or permissions are repaired outside the app.
+- Restic performs encryption, backup, and verification. The app invokes its documented CLI with structured arguments, not shell command strings, and does not store the repository password.
+- Backup outcomes distinguish success, partial completion, interruption, lock conflicts, missing repositories, and wrong passwords. A backup result is not proof that stored data can be restored.
+- A restore writes into a private staging directory, verifies via Restic, and publishes only to a new path. A failed or cancelled restore does not overwrite the requested destination.
+- No automatic repository unlock, snapshot deletion, retention, pruning, system-file overwrite, ownership repair, mount, or partition change is performed.
+
+See the [architecture](docs/architecture.md) and [verification report](docs/verification.md) for implementation details and tested limits.
+
+## What is not implemented yet
+
+There is no graphical multi-profile editor or setup wizard; no scheduled unattended backup, keyring integration, remote repository configuration, retention/pruning UI, snapshot search or comparison, in-place restore, full-home migration workflow, or privileged system backup. Large snapshot listings are bounded, and the GUI shows at most 500 entries per directory. See the [remaining work](docs/remaining-work.md).
+
+Automated recovery tests use disposable repositories and synthetic files. Core and GUI tests, release builds, formatting, Clippy, shell lint, and a secret scan passed in the development environment. The GTK window was not visually tested from the sandbox, and recovery from the user's external repository remains unverified. No performance benchmarks or KDE/X11 compatibility results are claimed.
+
+## Project layout
+
+```text
+crates/restic-core/      Restic subprocesses, validation, restore safety, profiles
+crates/restic-runner/    Headless CLI and job history
+crates/restic-gui/       GTK4/libadwaita interface
+packaging/debian/        Development .deb builder
+packaging/desktop/       Desktop entry and icon
+docs/                   Architecture, installation, verification, roadmap
+```
+
+The project uses the [MIT license](LICENSE).
