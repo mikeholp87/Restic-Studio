@@ -1,0 +1,3 @@
+/target/
+/crates/restic-gui/target/
+*.deb

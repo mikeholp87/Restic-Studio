@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Restic Studio
+Comment=Back up and restore files with Restic
+Exec=restic-studio-gui
+Icon=org.resticstudio.Studio
+Terminal=false
+Categories=Utility;Archiving;
+StartupNotify=true
