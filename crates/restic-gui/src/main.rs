@@ -143,6 +143,23 @@ fn destination_available(selection: &SelectedDestination) -> bool {
     })
 }
 
+fn source_repository_overlap(source: &str, repository: &str) -> bool {
+    let Some(source) = PathBuf::from(source).canonicalize().ok() else {
+        return false;
+    };
+    let repository = PathBuf::from(repository);
+    let repository = repository.canonicalize().ok().or_else(|| {
+        Some(
+            repository
+                .parent()?
+                .canonicalize()
+                .ok()?
+                .join(repository.file_name()?),
+        )
+    });
+    repository.is_some_and(|repo| source.starts_with(&repo) || repo.starts_with(&source))
+}
+
 fn repository_in(folder: &std::path::Path) -> Result<std::path::PathBuf, String> {
     if folder.join("config").is_file() {
         return Ok(folder.to_path_buf());
@@ -550,6 +567,18 @@ fn build(app: &adw::Application) {
             }
             if !destination_available(&selected_destination) {
                 status.set_text("The selected drive is unavailable or has changed. Reconnect and select it again.");
+                return;
+            }
+            if matches!(operation, 2 | 5)
+                && source_repository_overlap(&source.text(), &repo.text())
+            {
+                let warning = adw::AlertDialog::new(
+                    Some("The source and repository folders overlap"),
+                    Some("The selected source appears to be the external drive or a folder inside the repository. Select the folder you want to back up as the source, and set the external drive's Restic repository in the repository field. Swap them if you selected the drive as the source."),
+                );
+                warning.add_response("ok", "OK");
+                warning.set_close_response("ok");
+                warning.present(Some(&parent));
                 return;
             }
             if operation == 1 {
