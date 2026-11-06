@@ -26,7 +26,7 @@ mkdir -p "$stage/DEBIAN"
 architecture=$(dpkg --print-architecture)
 cat >"$stage/DEBIAN/control" <<EOF
 Package: restic-studio
-Version: 0.1.0-6
+Version: 0.1.0-7
 Section: utils
 Priority: optional
 Architecture: $architecture
@@ -36,4 +36,4 @@ Description: Native desktop interface for local Restic backups
  Backup, browse, verify and restore local Restic repositories.
  This development preview requires user review before relying on it for recovery.
 EOF
-dpkg-deb --build --root-owner-group "$stage" "$project_root/restic-studio_0.1.0-6_${architecture}.deb"
+dpkg-deb --build --root-owner-group "$stage" "$project_root/restic-studio_0.1.0-7_${architecture}.deb"

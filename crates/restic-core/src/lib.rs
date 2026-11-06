@@ -116,8 +116,10 @@ impl Profile {
         for source in &self.sources {
             ensure!(source.is_absolute(), "Source paths must be absolute");
             let source = source.canonicalize().context("Source unavailable")?;
+            let root_backup = source == Path::new("/") && destination != Path::new("/");
             ensure!(
-                !destination.starts_with(&source) && !source.starts_with(&destination),
+                root_backup
+                    || (!destination.starts_with(&source) && !source.starts_with(&destination)),
                 "Sources and repository must not contain one another"
             );
         }
@@ -427,6 +429,11 @@ impl Engine {
                 .canonicalize()
                 .is_ok_and(|path| path == Path::new("/"))
         }) {
+            excludes.push(
+                resolved_destination(Path::new(&profile.repository.location))?
+                    .to_string_lossy()
+                    .into_owned(),
+            );
             excludes.extend(
                 [
                     "/dev",

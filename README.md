@@ -22,13 +22,13 @@ This release supports **local filesystem repositories only**. An external drive 
 
 ## Install on Debian
 
-The development package for the tested Debian forky/sid environment is `restic-studio_0.1.0-6_amd64.deb`. It is not attached to GitHub as a release artifact; build it from this source checkout if needed. The package depends on the system Restic, GTK4, libadwaita, and glibc. It has not been verified on Debian 13, KDE, or X11.
+The development package for the tested Debian forky/sid environment is `restic-studio_0.1.0-7_amd64.deb`. It is not attached to GitHub as a release artifact; build it from this source checkout if needed. The package depends on the system Restic, GTK4, libadwaita, and glibc. It has not been verified on Debian 13, KDE, or X11.
 
 ```sh
 cargo build --release
 cargo build --manifest-path crates/restic-gui/Cargo.toml --release
 sh packaging/debian/build.sh
-sudo apt install ./restic-studio_0.1.0-6_amd64.deb
+sudo apt install ./restic-studio_0.1.0-7_amd64.deb
 ```
 
 Launch **Restic Studio** from the application menu or run `restic-studio-gui`. Ordinary use does not require `sudo`. See [installation and uninstall details](docs/installation.md).
@@ -52,9 +52,9 @@ The GUI is a separate Cargo workspace so the core and runner can build without G
 5. Choose **Back Up Now** and watch the progress popup. Check the final outcome. Restic exit code 3 is reported as a partial backup, which may have created an incomplete snapshot.
 6. Refresh snapshots and run **Check repository**. Practice restoring a file to a new folder before relying on the backup.
 
-The app refuses to back up if the selected repository is missing, and validates that a source and destination do not contain one another. It checks the selected destination's device before each GUI operation. It does not silently create a replacement repository when a drive is unavailable.
+The app refuses to back up if the selected repository is missing and prevents recursive source/repository layouts; a `/` backup is allowed because it explicitly excludes the repository. It checks the selected destination's device before each GUI operation. It does not silently create a replacement repository when a drive is unavailable.
 
-When the source is `/`, Restic Studio automatically excludes `/dev`, `/proc`, `/sys`, `/run`, `/tmp`, `/var/tmp`, `/mnt`, `/media`, and `/lost+found`. It also excludes `/home` when the selected repository already contains a snapshot of `/home` or a subdirectory of it from this host. The app still runs as your user, so protected files outside those paths can cause a partial backup; it will report that result instead of marking it successful.
+When the source is `/`, Restic Studio automatically excludes the selected repository folder, plus `/dev`, `/proc`, `/sys`, `/run`, `/tmp`, `/var/tmp`, `/mnt`, `/media`, and `/lost+found`. It also excludes `/home` when the selected repository already contains a snapshot of `/home` or a subdirectory of it from this host. The app still runs as your user, so protected files outside those paths can cause a partial backup; it will report that result instead of marking it successful.
 
 ## Restore a file or directory
 
