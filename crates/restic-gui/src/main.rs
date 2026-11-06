@@ -95,7 +95,13 @@ fn progress_window(
     let status = gtk::Label::new(Some("Preparing…"));
     status.set_wrap(true);
     status.set_xalign(0.0);
-    content.append(&status);
+    status.set_selectable(true);
+    let status_scroll = gtk::ScrolledWindow::builder()
+        .max_content_height(240)
+        .propagate_natural_height(true)
+        .child(&status)
+        .build();
+    content.append(&status_scroll);
     let bar = gtk::ProgressBar::new();
     bar.set_show_text(true);
     bar.set_text(Some("Waiting for Restic…"));
@@ -612,7 +618,7 @@ fn build(app: &adw::Application) {
             repo.set_editable(false);
             snapshot.set_editable(false);
             stack.set_sensitive(false);
-            status.set_text(if operation == 5 { "Previewing backup… no snapshot will be created" } else { "Working…" });
+            status.set_text(if progress_ui.is_some() { "" } else { "Working…" });
             std::thread::spawn(move || {
                 let engine = Engine::default();
                 let result = (|| -> anyhow::Result<(String, Vec<Snapshot>, Option<Outcome>)> {
@@ -716,7 +722,6 @@ fn build(app: &adw::Application) {
                             repo.set_editable(true);
                             snapshot.set_editable(true);
                             stack.set_sensitive(true);
-                            status.set_text("Operation ended unexpectedly");
                             if let Some(ui) = &progress_ui {
                                 ui.window.set_title(Some("Operation failed"));
                                 ui.status.set_text("Operation ended unexpectedly");
@@ -724,13 +729,14 @@ fn build(app: &adw::Application) {
                                 ui.stop.set_sensitive(false);
                                 ui.close.set_sensitive(true);
                                 ui.finished.set(true);
+                            } else {
+                                status.set_text("Operation ended unexpectedly");
                             }
                             return glib::ControlFlow::Break;
                         }
                     };
                     match update {
                         OperationUpdate::Progress(message, fraction) => {
-                            status.set_text(&message);
                             if let Some(ui) = &progress_ui {
                                 ui.status.set_text(&message);
                                 if let Some(fraction) = fraction {
@@ -741,10 +747,9 @@ fn build(app: &adw::Application) {
                             }
                         }
                         OperationUpdate::Done(message, snapshots, outcome) => {
-                            status.set_text(&message);
                             if let Some(ui) = &progress_ui {
                                 ui.window.set_title(Some("Operation finished"));
-                                ui.status.set_text(&message.lines().take(3).collect::<Vec<_>>().join("\n"));
+                                ui.status.set_text(&message);
                                 ui.bar.set_text(Some(match outcome {
                                     Some(Outcome::Success) => "Complete",
                                     Some(Outcome::Cancelled) => "Stopped",
@@ -756,6 +761,8 @@ fn build(app: &adw::Application) {
                                 ui.stop.set_sensitive(false);
                                 ui.close.set_sensitive(true);
                                 ui.finished.set(true);
+                            } else {
+                                status.set_text(&message);
                             }
                             if !snapshots.is_empty() {
                                 while let Some(child) = list.first_child() {
