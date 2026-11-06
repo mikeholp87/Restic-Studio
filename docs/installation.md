@@ -1,13 +1,13 @@
 # Installing the development package
 
-The package `restic-studio_0.1.0-4_amd64.deb` was built on Debian forky/sid.
+The package `restic-studio_0.1.0-5_amd64.deb` was built on Debian forky/sid.
 It depends on the installed system Restic, GTK4, libadwaita and glibc versions.
 Do not use this binary package on Debian 13 without rebuilding and testing there.
 
 Install from the project directory:
 
 ```sh
-sudo apt install ./restic-studio_0.1.0-4_amd64.deb
+sudo apt install ./restic-studio_0.1.0-5_amd64.deb
 ```
 
 Launch **Restic Studio** from the application menu, or run

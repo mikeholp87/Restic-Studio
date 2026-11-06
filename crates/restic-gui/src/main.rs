@@ -321,6 +321,12 @@ fn build(app: &adw::Application) {
     content.append(&switcher);
     let backup_page = gtk::Box::new(gtk::Orientation::Vertical, 12);
     backup_page.append(&source_placeholder);
+    let root_backup_note = gtk::Label::new(Some(
+        "When backing up /, virtual and temporary system folders are skipped. /home is skipped only when this repository already has a home snapshot from this host.",
+    ));
+    root_backup_note.set_wrap(true);
+    root_backup_note.set_xalign(0.0);
+    backup_page.append(&root_backup_note);
     let restore_page = gtk::Box::new(gtk::Orientation::Vertical, 12);
     let backup_actions = gtk::Box::new(gtk::Orientation::Vertical, 8);
     for button in [&buttons[0], &buttons[2], &buttons[3]] {

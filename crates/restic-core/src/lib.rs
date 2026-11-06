@@ -92,6 +92,17 @@ pub fn snapshot_id(id: &str) -> Result<()> {
     );
     Ok(())
 }
+fn current_hostname() -> Option<String> {
+    let mut hostname = [0i8; 256];
+    if unsafe { libc::gethostname(hostname.as_mut_ptr(), hostname.len()) } != 0 {
+        return None;
+    }
+    Some(
+        unsafe { std::ffi::CStr::from_ptr(hostname.as_ptr()) }
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
 impl Profile {
     pub fn validate(&self) -> Result<()> {
         valid_id(&self.id)?;
@@ -410,13 +421,49 @@ impl Engine {
             "--tag".into(),
             format!("restic-studio:{}", profile.id).into(),
         ];
+        let mut excludes = profile.excludes.clone();
+        if profile.sources.iter().any(|source| {
+            source
+                .canonicalize()
+                .is_ok_and(|path| path == Path::new("/"))
+        }) {
+            excludes.extend(
+                [
+                    "/dev",
+                    "/proc",
+                    "/sys",
+                    "/run",
+                    "/tmp",
+                    "/var/tmp",
+                    "/mnt",
+                    "/media",
+                    "/lost+found",
+                ]
+                .into_iter()
+                .map(str::to_owned),
+            );
+            if let Some(hostname) = current_hostname()
+                && self
+                    .snapshots(&profile.repository, password)?
+                    .iter()
+                    .any(|snapshot| {
+                        snapshot.hostname == hostname
+                            && snapshot
+                                .paths
+                                .iter()
+                                .any(|path| path == "/home" || path.starts_with("/home/"))
+                    })
+            {
+                excludes.push("/home".into());
+            }
+        }
         if dry_run {
             args.push("--dry-run".into());
         }
         if profile.one_file_system {
             args.push("--one-file-system".into());
         }
-        for exclude in &profile.excludes {
+        for exclude in &excludes {
             args.extend(["--exclude".into(), exclude.into()]);
         }
         args.push("--".into());
