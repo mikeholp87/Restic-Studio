@@ -4,6 +4,22 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 #[test]
+fn root_source_can_use_a_repository_below_root() -> anyhow::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let profile = Profile {
+        id: "root".into(),
+        name: "Root".into(),
+        repository: Repository {
+            location: temp.path().join("repo").to_string_lossy().into(),
+        },
+        sources: vec!["/".into()],
+        excludes: vec![],
+        one_file_system: false,
+    };
+    profile.validate()?;
+    Ok(())
+}
+#[test]
 fn disposable_recovery() -> anyhow::Result<()> {
     let temp = tempfile::tempdir()?;
     use std::os::unix::fs::PermissionsExt;

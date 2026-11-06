@@ -157,7 +157,10 @@ fn source_repository_overlap(source: &str, repository: &str) -> bool {
                 .join(repository.file_name()?),
         )
     });
-    repository.is_some_and(|repo| source.starts_with(&repo) || repo.starts_with(&source))
+    repository.is_some_and(|repo| {
+        !(source == std::path::Path::new("/") && repo != source)
+            && (source.starts_with(&repo) || repo.starts_with(&source))
+    })
 }
 
 fn repository_in(folder: &std::path::Path) -> Result<std::path::PathBuf, String> {
@@ -339,7 +342,7 @@ fn build(app: &adw::Application) {
     let backup_page = gtk::Box::new(gtk::Orientation::Vertical, 12);
     backup_page.append(&source_placeholder);
     let root_backup_note = gtk::Label::new(Some(
-        "When backing up /, virtual and temporary system folders are skipped. /home is skipped only when this repository already has a home snapshot from this host.",
+        "When backing up /, the repository folder plus virtual and temporary system folders are skipped. /home is skipped only when this repository already has a home snapshot from this host.",
     ));
     root_backup_note.set_wrap(true);
     root_backup_note.set_xalign(0.0);
@@ -791,6 +794,21 @@ unsafe fn libc_geteuid() -> u32 {
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, os::unix::fs::MetadataExt, rc::Rc};
+    #[test]
+    fn root_source_allows_repository_but_other_overlaps_warn() -> std::io::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let repository = temp.path().join("repo");
+        std::fs::create_dir(&repository)?;
+        let repo = repository.to_str().unwrap();
+        assert!(!super::source_repository_overlap("/", repo));
+        assert!(super::source_repository_overlap(
+            temp.path().to_str().unwrap(),
+            repo
+        ));
+        assert!(super::source_repository_overlap(repo, repo));
+        assert!(super::source_repository_overlap("/", "/"));
+        Ok(())
+    }
     #[test]
     fn backup_and_restore_progress_use_reported_fields() {
         let backup = serde_json::json!({
