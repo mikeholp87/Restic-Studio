@@ -194,6 +194,48 @@ fn main() -> glib::ExitCode {
     app.connect_activate(build);
     app.run()
 }
+/// A file-safe profile ID from a display name; None when nothing usable is left.
+fn profile_id(name: &str) -> Option<String> {
+    let mut id = String::new();
+    for c in name.trim().chars() {
+        if c.is_ascii_alphanumeric() {
+            id.push(c.to_ascii_lowercase());
+        } else if !id.ends_with('-') {
+            id.push('-');
+        }
+    }
+    let id: String = id.trim_matches('-').chars().take(64).collect();
+    let id = id.trim_end_matches('-').to_string();
+    (!id.is_empty()).then_some(id)
+}
+/// Reload the saved-profile list; entry 0 is always "No profile selected".
+fn refresh_profiles(
+    store: &std::path::Path,
+    profiles: &RefCell<Vec<Profile>>,
+    names: &gtk::StringList,
+    dropdown: &gtk::DropDown,
+    select: Option<&str>,
+) -> Option<String> {
+    let listed = restic_core::list_profiles(store);
+    let (found, problem) = match listed {
+        Ok(list) => (
+            list.profiles,
+            (!list.problems.is_empty())
+                .then(|| format!("{} profile file(s) could not be read.", list.problems.len())),
+        ),
+        Err(error) => (Vec::new(), Some(format!("Profiles unavailable: {error:#}"))),
+    };
+    let labels: Vec<&str> = std::iter::once("No profile selected")
+        .chain(found.iter().map(|p| p.name.as_str()))
+        .collect();
+    names.splice(0, names.n_items(), &labels);
+    let position = select
+        .and_then(|id| found.iter().position(|p| p.id == id))
+        .map_or(0, |i| i as u32 + 1);
+    *profiles.borrow_mut() = found;
+    dropdown.set_selected(position);
+    problem
+}
 fn field(container: &gtk::Box, title: &str, placeholder: &str) -> gtk::Entry {
     let label = gtk::Label::new(Some(title));
     label.set_xalign(0.0);
@@ -308,6 +350,28 @@ fn build(app: &adw::Application) {
     ));
     notice.set_xalign(0.0);
     content.append(&notice);
+    let profile_store = restic_core::state_dir().map(|dir| dir.join("profiles"));
+    let profiles: Rc<RefCell<Vec<Profile>>> = Rc::default();
+    let profile_names = gtk::StringList::new(&[]);
+    let profile_menu = gtk::DropDown::new(Some(profile_names.clone()), gtk::Expression::NONE);
+    profile_menu.set_hexpand(true);
+    let profile_save = gtk::Button::with_label("Save profile");
+    let profile_delete = gtk::Button::with_label("Delete profile");
+    let profile_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let profile_label = gtk::Label::new(Some(
+        "Saved profile (settings only; passwords are never saved)",
+    ));
+    profile_label.set_xalign(0.0);
+    profile_row.append(&profile_menu);
+    profile_row.append(&profile_save);
+    profile_row.append(&profile_delete);
+    content.append(&profile_label);
+    content.append(&profile_row);
+    let profile_name = field(
+        &content,
+        "Profile name",
+        "Name to save these settings under",
+    );
     let repo = field(&content, "Repository folder", "/path/to/backup-repository");
     let selected_destination: SelectedDestination = Rc::new(RefCell::new(None));
     let destination_picker = gtk::Button::with_label("Choose external drive or destination…");
@@ -328,6 +392,149 @@ fn build(app: &adw::Application) {
     let s = source.clone();
     pick.connect_clicked(move |_| choose(&w, &s));
     source_placeholder.append(&pick);
+    match &profile_store {
+        Ok(store) => {
+            if let Some(problem) =
+                refresh_profiles(store, &profiles, &profile_names, &profile_menu, None)
+            {
+                status.set_text(&problem);
+            }
+            let loading = Rc::new(Cell::new(false));
+            {
+                let (profiles, repo, source, profile_name, status, loading) = (
+                    profiles.clone(),
+                    repo.clone(),
+                    source.clone(),
+                    profile_name.clone(),
+                    status.clone(),
+                    loading.clone(),
+                );
+                profile_menu.connect_selected_notify(move |menu| {
+                    let index = menu.selected();
+                    if loading.get() || index == 0 {
+                        return;
+                    }
+                    if let Some(profile) = profiles.borrow().get(index as usize - 1) {
+                        repo.set_text(&profile.repository.location);
+                        source.set_text(
+                            &profile
+                                .sources
+                                .first()
+                                .map(|p| p.to_string_lossy().into_owned())
+                                .unwrap_or_default(),
+                        );
+                        profile_name.set_text(&profile.name);
+                        status.set_text(&if profile.sources.len() > 1 {
+                            format!("Loaded profile {}. It has {} sources; only the first is shown, so editing is disabled. Use the runner to run it.", profile.name, profile.sources.len())
+                        } else {
+                            format!("Loaded profile {}. Enter the repository password to use it.", profile.name)
+                        });
+                    }
+                });
+            }
+            {
+                let (store, profiles, names, menu, repo, source, profile_name, status, loading) = (
+                    store.clone(),
+                    profiles.clone(),
+                    profile_names.clone(),
+                    profile_menu.clone(),
+                    repo.clone(),
+                    source.clone(),
+                    profile_name.clone(),
+                    status.clone(),
+                    loading.clone(),
+                );
+                profile_save.connect_clicked(move |_| {
+                    let name = profile_name.text().trim().to_string();
+                    let Some(id) = profile_id(&name) else {
+                        status.set_text("Give the profile a name with at least one letter or digit.");
+                        return;
+                    };
+                    let existing = profiles.borrow().iter().find(|p| p.id == id).cloned();
+                    if existing.as_ref().is_some_and(|p| p.sources.len() > 1) {
+                        status.set_text("That profile has several sources; saving here would drop them. Edit it with the runner.");
+                        return;
+                    }
+                    let profile = Profile {
+                        id: id.clone(),
+                        name,
+                        repository: Repository {
+                            location: repo.text().to_string(),
+                        },
+                        sources: vec![PathBuf::from(source.text().as_str())],
+                        excludes: existing.as_ref().map(|p| p.excludes.clone()).unwrap_or_default(),
+                        one_file_system: existing.as_ref().is_some_and(|p| p.one_file_system),
+                    };
+                    match restic_core::save_profile(&profile, &store) {
+                        Ok(()) => {
+                            loading.set(true);
+                            refresh_profiles(&store, &profiles, &names, &menu, Some(&id));
+                            loading.set(false);
+                            status.set_text(&format!("Saved profile {}. The password was not saved.", profile.name));
+                        }
+                        Err(error) => status.set_text(&format!("Could not save profile: {error:#}")),
+                    }
+                });
+            }
+            {
+                let (store, profiles, names, menu, status, loading, window) = (
+                    store.clone(),
+                    profiles.clone(),
+                    profile_names.clone(),
+                    profile_menu.clone(),
+                    status.clone(),
+                    loading.clone(),
+                    window.clone(),
+                );
+                profile_delete.connect_clicked(move |_| {
+                    let index = menu.selected();
+                    let Some(profile) = (index > 0)
+                        .then(|| profiles.borrow().get(index as usize - 1).cloned())
+                        .flatten()
+                    else {
+                        status.set_text("Select a saved profile to delete.");
+                        return;
+                    };
+                    let dialog = adw::AlertDialog::new(
+                        Some(&format!("Delete profile “{}”?", profile.name)),
+                        Some("Only the saved settings are removed. The repository and its snapshots are not touched."),
+                    );
+                    dialog.add_responses(&[("cancel", "Cancel"), ("delete", "Delete profile")]);
+                    dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+                    dialog.set_default_response(Some("cancel"));
+                    dialog.set_close_response("cancel");
+                    let (store, profiles, names, menu, status, loading) = (
+                        store.clone(),
+                        profiles.clone(),
+                        names.clone(),
+                        menu.clone(),
+                        status.clone(),
+                        loading.clone(),
+                    );
+                    dialog.choose(Some(&window), None::<&gtk::gio::Cancellable>, move |response| {
+                        if response != "delete" {
+                            return;
+                        }
+                        match restic_core::delete_profile(&store, &profile.id) {
+                            Ok(()) => {
+                                loading.set(true);
+                                refresh_profiles(&store, &profiles, &names, &menu, None);
+                                loading.set(false);
+                                status.set_text(&format!("Deleted profile {}.", profile.name));
+                            }
+                            Err(error) => status.set_text(&format!("Could not delete profile: {error:#}")),
+                        }
+                    });
+                });
+            }
+        }
+        Err(error) => {
+            profile_menu.set_sensitive(false);
+            profile_save.set_sensitive(false);
+            profile_delete.set_sensitive(false);
+            status.set_text(&format!("Profiles unavailable: {error:#}"));
+        }
+    }
     let password = gtk::PasswordEntry::builder()
         .placeholder_text("Repository password — kept only for this operation")
         .show_peek_icon(true)
@@ -824,6 +1031,19 @@ mod tests {
         assert!(super::source_repository_overlap(repo, repo));
         assert!(super::source_repository_overlap("/", "/"));
         Ok(())
+    }
+    #[test]
+    fn profile_ids_are_file_safe() {
+        assert_eq!(
+            super::profile_id("  My Documents! ").as_deref(),
+            Some("my-documents")
+        );
+        assert_eq!(super::profile_id("a/../b").as_deref(), Some("a-b"));
+        assert_eq!(super::profile_id("日本語"), None);
+        assert_eq!(super::profile_id("---"), None);
+        let long = super::profile_id(&"x".repeat(100)).unwrap();
+        assert_eq!(long.len(), 64);
+        assert!(restic_core::valid_id(&long).is_ok());
     }
     #[test]
     fn backup_and_restore_progress_use_reported_fields() {
