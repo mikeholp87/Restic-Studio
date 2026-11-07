@@ -95,6 +95,78 @@ fn parse_version(text: &str) -> Option<(u32, u32, u32)> {
     Some((next()?, next()?, next()?))
 }
 
+#[derive(Debug, Serialize)]
+pub struct MountInfo {
+    pub mount_point: PathBuf,
+    pub fstype: String,
+    pub source: String,
+    /// Kernel's removable flag for the underlying disk; None when sysfs does not say.
+    pub removable: Option<bool>,
+}
+/// Longest mount point containing `path`, from a /proc/self/mountinfo table.
+fn parse_mount(table: &str, path: &Path) -> Option<MountInfo> {
+    let mut best: Option<(MountInfo, String)> = None;
+    for line in table.lines() {
+        let (head, tail) = line.split_once(" - ")?;
+        let fields: Vec<&str> = head.split(' ').collect();
+        let mut after = tail.split(' ');
+        let (fstype, source) = (after.next()?, after.next()?);
+        // mountinfo escapes spaces and tabs as octal.
+        let mount_point =
+            PathBuf::from(fields.get(4)?.replace("\\040", " ").replace("\\011", "\t"));
+        if path.starts_with(&mount_point)
+            && best.as_ref().is_none_or(|(b, _)| {
+                mount_point.as_os_str().len() >= b.mount_point.as_os_str().len()
+            })
+        {
+            let info = MountInfo {
+                mount_point,
+                fstype: fstype.into(),
+                source: source.into(),
+                removable: None,
+            };
+            best = Some((info, (*fields.get(2)?).to_owned()));
+        }
+    }
+    best.map(|(mut info, majmin)| {
+        // Partitions keep the flag on their parent disk.
+        info.removable = ["", "/.."].iter().find_map(|up| {
+            fs::read_to_string(format!("/sys/dev/block/{majmin}{up}/removable"))
+                .ok()
+                .map(|v| v.trim() == "1")
+        });
+        info
+    })
+}
+/// Mount holding `path`, or its nearest existing ancestor if it does not exist yet.
+pub fn mount_info(path: &Path) -> Result<MountInfo> {
+    let mut existing = path;
+    while !existing.exists() {
+        existing = existing.parent().context("No existing parent directory")?;
+    }
+    let real = existing.canonicalize()?;
+    parse_mount(&fs::read_to_string("/proc/self/mountinfo")?, &real)
+        .context("Could not find the mount for this location")
+}
+/// True when `path` sits under a usual drive mount directory but resolves to the system
+/// disk, i.e. the drive is not mounted and writing would fill an empty mount point.
+fn unmounted_drive_location(info: &MountInfo, path: &Path) -> bool {
+    info.mount_point == Path::new("/")
+        && ["/media", "/mnt", "/run/media"]
+            .iter()
+            .any(|dir| path.starts_with(dir))
+}
+pub fn ensure_mounted(path: &Path) -> Result<MountInfo> {
+    let info = mount_info(path)?;
+    let real = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    ensure!(
+        !unmounted_drive_location(&info, path) && !unmounted_drive_location(&info, &real),
+        "{} is under a drive mount directory but on the system disk; the drive does not look mounted. Connect and mount it, then select it again",
+        path.display()
+    );
+    Ok(info)
+}
+
 pub fn valid_id(id: &str) -> Result<()> {
     ensure!(
         !id.is_empty()
@@ -501,6 +573,7 @@ impl Engine {
         })
     }
     pub fn init(&self, repo: &Repository, password: &str) -> Result<JobResult> {
+        ensure_mounted(Path::new(&repo.location))?;
         let path = Path::new(&repo.location);
         ensure!(
             !path.exists() || fs::read_dir(path)?.next().is_none(),
@@ -882,5 +955,33 @@ mod tests {
         };
         let found = missing.probe();
         assert!(!found.ok() && found.version.is_none());
+    }
+
+    #[test]
+    fn mount_lookup_and_unmounted_drive_detection() {
+        let table = "22 1 259:2 / / rw - ext4 /dev/nvme0n1p2 rw\n\
+            90 22 8:17 / /media/mike/My\\040Disk rw shared:1 - exfat /dev/sdb1 rw\n";
+        let root = parse_mount(table, Path::new("/home/mike/repo")).unwrap();
+        assert_eq!(root.mount_point, Path::new("/"));
+        let drive = parse_mount(table, Path::new("/media/mike/My Disk/backup")).unwrap();
+        assert_eq!(
+            (drive.fstype.as_str(), drive.source.as_str()),
+            ("exfat", "/dev/sdb1")
+        );
+        // Same path, drive absent: resolves to / and must be refused.
+        assert!(unmounted_drive_location(
+            &root,
+            Path::new("/media/mike/My Disk/backup")
+        ));
+        assert!(!unmounted_drive_location(
+            &drive,
+            Path::new("/media/mike/My Disk/backup")
+        ));
+        assert!(!unmounted_drive_location(
+            &root,
+            Path::new("/home/mike/repo")
+        ));
+        assert!(ensure_mounted(Path::new("/proc")).is_ok());
+        assert!(ensure_mounted(Path::new("/media/definitely-not-mounted/x")).is_err());
     }
 }

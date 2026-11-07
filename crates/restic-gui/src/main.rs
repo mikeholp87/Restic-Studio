@@ -236,7 +236,10 @@ fn choose_destination(
             if let Ok(file) = result
                 && let Some(folder) = file.path()
             {
-                match repository_in(&folder) {
+                match restic_core::ensure_mounted(&folder)
+                    .map_err(|error| error.to_string())
+                    .and_then(|_| repository_in(&folder))
+                {
                     Ok(repository) => {
                         entry.set_text(&repository.to_string_lossy());
                         *selected.borrow_mut() = std::fs::metadata(&folder)
