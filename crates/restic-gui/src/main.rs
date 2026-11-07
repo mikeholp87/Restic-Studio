@@ -275,7 +275,13 @@ fn build(app: &adw::Application) {
     });
     header.pack_end(&theme);
     outer.append(&header);
-    let status = gtk::Label::new(Some("Ready. Health has not been verified."));
+    // One quick `restic version` call; a hung Restic would stall startup (ponytail: move off-thread if so).
+    let problems = Engine::default().probe().problems;
+    let status = gtk::Label::new(Some(&if problems.is_empty() {
+        "Ready. Health has not been verified.".to_string()
+    } else {
+        format!("Cannot back up on this system:\n{}", problems.join("\n"))
+    }));
     status.set_wrap(true);
     status.set_xalign(0.0);
     status.set_selectable(true);
