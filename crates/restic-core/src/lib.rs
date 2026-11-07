@@ -76,6 +76,11 @@ pub enum Event {
     Diagnostic(String),
 }
 
+/// Largest single line of Restic output accepted by `run`.
+const RECORD_LIMIT: usize = 1 << 20;
+/// `restic snapshots --json` prints every snapshot on one line, so it gets a larger cap.
+/// 32 MiB is roughly 100,000 snapshots.
+const SNAPSHOT_LIMIT: usize = 32 << 20;
 /// Oldest Restic with the exit codes 10/11/12 that `classify` relies on.
 const MIN_RESTIC: (u32, u32, u32) = (0, 17, 0);
 #[derive(Debug, Serialize)]
@@ -376,7 +381,19 @@ impl Engine {
         password: &str,
         args: &[OsString],
         cancel: Arc<AtomicBool>,
+        event: impl FnMut(Event),
+    ) -> Result<JobResult> {
+        self.run_limited(repo, password, args, cancel, event, RECORD_LIMIT)
+    }
+    /// Like `run`, but each output record (one line of Restic output) may be up to `max_record` bytes.
+    pub fn run_limited(
+        &self,
+        repo: &Repository,
+        password: &str,
+        args: &[OsString],
+        cancel: Arc<AtomicBool>,
         mut event: impl FnMut(Event),
+        max_record: usize,
     ) -> Result<JobResult> {
         ensure!(
             !password.contains(['\n', '\r']),
@@ -475,7 +492,7 @@ impl Engine {
                             .position(|b| *b == b'\n')
                             .map_or(buffer.len(), |i| i + 1);
                         let end = buffer[n - 1] == b'\n';
-                        if bytes.len() + n <= 1024 * 1024 {
+                        if bytes.len() + n <= max_record {
                             bytes.extend_from_slice(&buffer[..n]);
                         } else {
                             oversized = true;
@@ -489,7 +506,10 @@ impl Engine {
                         return;
                     }
                     let value = if oversized {
-                        Err("Process output record exceeded 1 MiB".to_owned())
+                        Err(format!(
+                            "Process output record exceeded {} MiB",
+                            max_record >> 20
+                        ))
                     } else {
                         serde_json::from_slice(&bytes).map_err(|_| {
                             String::from_utf8_lossy(&bytes).chars().take(2048).collect()
@@ -676,7 +696,7 @@ impl Engine {
     }
     pub fn snapshots(&self, repo: &Repository, password: &str) -> Result<Vec<Snapshot>> {
         let mut snapshots = None;
-        let result = self.run(
+        let result = self.run_limited(
             repo,
             password,
             &["snapshots".into()],
@@ -688,13 +708,16 @@ impl Engine {
                     snapshots = Some(items);
                 }
             },
+            SNAPSHOT_LIMIT,
         )?;
         ensure!(
             result.outcome == Outcome::Success,
             "Snapshot listing failed: {:?}",
             result.outcome
         );
-        snapshots.context("Snapshot response was invalid or exceeded the 1 MiB record limit; listing is unavailable")
+        snapshots.context(
+            "Snapshot response was invalid or exceeded the 32 MiB limit; listing is unavailable",
+        )
     }
     /// Read direct children only; callers can navigate without loading an entire tree.
     pub fn list_directory(

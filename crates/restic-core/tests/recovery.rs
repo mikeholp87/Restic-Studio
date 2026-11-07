@@ -228,6 +228,37 @@ fn swapped_repository_is_refused() -> anyhow::Result<()> {
     assert!(engine.snapshots(&repo, "pw two")?.is_empty());
     Ok(())
 }
+/// A stand-in Restic that prints `count` snapshots as one JSON line.
+fn fake_restic(dir: &std::path::Path, count: u32) -> anyhow::Result<Engine> {
+    use std::os::unix::fs::PermissionsExt;
+    let script = dir.join("restic");
+    fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\ncat >/dev/null\nawk 'BEGIN{{printf \"[\"; for(i=0;i<{count};i++){{if(i)printf \",\"; printf \"{{\\\"id\\\":\\\"%064d\\\",\\\"time\\\":\\\"2026-01-01T00:00:00Z\\\",\\\"paths\\\":[\\\"/home\\\"],\\\"hostname\\\":\\\"h\\\",\\\"tags\\\":[]}}\", i}}; print \"]\"}}'\n"
+        ),
+    )?;
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755))?;
+    Ok(Engine {
+        executable: script,
+        ..Engine::default()
+    })
+}
+#[test]
+fn large_snapshot_list_is_parsed_within_the_limit() -> anyhow::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let repo = Repository {
+        location: temp.path().to_string_lossy().into(),
+    };
+    // About 2.5 MiB on one line: over the generic 1 MiB record cap, under the snapshot cap.
+    let engine = fake_restic(temp.path(), 20_000)?;
+    assert_eq!(engine.snapshots(&repo, "pw")?.len(), 20_000);
+    // About 44 MiB: over the snapshot cap, so listing fails explicitly instead of truncating.
+    let engine = fake_restic(temp.path(), 400_000)?;
+    let error = engine.snapshots(&repo, "pw").unwrap_err();
+    assert!(error.to_string().contains("32 MiB"), "{error}");
+    Ok(())
+}
 #[test]
 fn outcomes_and_identifiers() {
     assert_eq!(classify(Some(3), false, true), Outcome::Partial);
