@@ -76,6 +76,25 @@ pub enum Event {
     Diagnostic(String),
 }
 
+/// Oldest Restic with the exit codes 10/11/12 that `classify` relies on.
+const MIN_RESTIC: (u32, u32, u32) = (0, 17, 0);
+#[derive(Debug, Serialize)]
+pub struct Capabilities {
+    pub version: Option<String>,
+    pub problems: Vec<String>,
+}
+impl Capabilities {
+    pub fn ok(&self) -> bool {
+        self.problems.is_empty()
+    }
+}
+/// "restic 0.19.1 compiled with go1.26.4 on linux/amd64" -> (0, 19, 1)
+fn parse_version(text: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = text.split_whitespace().nth(1)?.split('.');
+    let mut next = || parts.next()?.parse().ok();
+    Some((next()?, next()?, next()?))
+}
+
 pub fn valid_id(id: &str) -> Result<()> {
     ensure!(
         !id.is_empty()
@@ -174,6 +193,38 @@ impl Engine {
         let output = Command::new(&self.executable).arg("version").output()?;
         ensure!(output.status.success(), "Restic version detection failed");
         Ok(String::from_utf8(output.stdout)?.trim().into())
+    }
+    /// Check the host can run this engine's Restic invocations. Never touches a repository.
+    pub fn probe(&self) -> Capabilities {
+        let mut problems = Vec::new();
+        let version = match self.version() {
+            Ok(text) => match parse_version(&text) {
+                Some(found) if found >= MIN_RESTIC => Some(text),
+                Some(_) => {
+                    problems.push(format!(
+                        "Restic {}.{}.{} or newer is required: {text}",
+                        MIN_RESTIC.0, MIN_RESTIC.1, MIN_RESTIC.2
+                    ));
+                    Some(text)
+                }
+                None => {
+                    problems.push(format!("Unrecognised Restic version output: {text}"));
+                    Some(text)
+                }
+            },
+            Err(error) => {
+                problems.push(format!("Restic unavailable: {error}"));
+                None
+            }
+        };
+        // run() pins the repository through /proc/<pid>/fd and feeds the password on /dev/stdin.
+        if !Path::new("/proc/self/fd").is_dir() {
+            problems.push("/proc is not mounted; repository pinning needs /proc/<pid>/fd".into());
+        }
+        if !Path::new("/dev/stdin").exists() {
+            problems.push("/dev/stdin is missing; the password pipe needs it".into());
+        }
+        Capabilities { version, problems }
     }
     pub fn run(
         &self,
@@ -737,4 +788,25 @@ pub fn record(directory: &Path, profile: &str, result: &JobResult) -> Result<()>
     writeln!(file)?;
     file.sync_data()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn probe_parsing_and_missing_engine() {
+        assert_eq!(
+            parse_version("restic 0.19.1 compiled with go1.26.4 on linux/amd64"),
+            Some((0, 19, 1))
+        );
+        assert!((0, 16, 5) < MIN_RESTIC && (0, 17, 0) >= MIN_RESTIC);
+        assert_eq!(parse_version("garbage"), None);
+        let missing = Engine {
+            executable: "/nonexistent/restic".into(),
+            cache_dir: None,
+        };
+        let found = missing.probe();
+        assert!(!found.ok() && found.version.is_none());
+    }
 }

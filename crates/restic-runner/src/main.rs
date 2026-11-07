@@ -26,9 +26,14 @@ fn main() -> Result<()> {
         println!("{}", engine.version()?);
         return Ok(());
     }
+    if args.first().map(String::as_str) == Some("probe") {
+        let capabilities = engine.probe();
+        println!("{}", serde_json::to_string_pretty(&capabilities)?);
+        std::process::exit(if capabilities.ok() { 0 } else { 1 });
+    }
     if args.is_empty() {
         println!(
-            "Restic Studio runner\nCommands: version | init REPO | snapshots REPO | ls REPO SNAPSHOT DIRECTORY | check REPO | preview PROFILE.json | backup PROFILE.json | run-profile ID | restore REPO SNAPSHOT PATH NEW_DIRECTORY\nSupply password on stdin. GTK client: restic-studio-gui."
+            "Restic Studio runner\nCommands: version | probe | init REPO | snapshots REPO | ls REPO SNAPSHOT DIRECTORY | check REPO | preview PROFILE.json | backup PROFILE.json | run-profile ID | restore REPO SNAPSHOT PATH NEW_DIRECTORY\nSupply password on stdin. GTK client: restic-studio-gui."
         );
         return Ok(());
     }
