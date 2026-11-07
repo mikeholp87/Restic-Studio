@@ -37,9 +37,34 @@ fn main() -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&info)?);
         return Ok(());
     }
+    if matches!(
+        args.first().map(String::as_str),
+        Some("profiles" | "profile-save" | "profile-delete")
+    ) {
+        let store = restic_core::state_dir()?.join("profiles");
+        match args[0].as_str() {
+            "profiles" => println!(
+                "{}",
+                serde_json::to_string_pretty(&restic_core::list_profiles(&store)?)?
+            ),
+            "profile-save" => {
+                let file = args.get(1).context("profile-save PROFILE.json")?;
+                let profile: Profile =
+                    serde_json::from_reader(io::Read::take(std::fs::File::open(file)?, 1 << 20))?;
+                restic_core::save_profile(&profile, &store)?;
+                println!("Saved profile {}", profile.id);
+            }
+            _ => {
+                let id = args.get(1).context("profile-delete ID")?;
+                restic_core::delete_profile(&store, id)?;
+                println!("Deleted profile {id} (repository and snapshots untouched)");
+            }
+        }
+        return Ok(());
+    }
     if args.is_empty() {
         println!(
-            "Restic Studio runner\nCommands: version | probe | device PATH | init REPO | snapshots REPO | ls REPO SNAPSHOT DIRECTORY | check REPO | preview PROFILE.json | backup PROFILE.json | run-profile ID | restore REPO SNAPSHOT PATH NEW_DIRECTORY\nSupply password on stdin. GTK client: restic-studio-gui."
+            "Restic Studio runner\nCommands: version | probe | device PATH | profiles | profile-save PROFILE.json | profile-delete ID | init REPO | snapshots REPO | ls REPO SNAPSHOT DIRECTORY | check REPO | preview PROFILE.json | backup PROFILE.json | run-profile ID | restore REPO SNAPSHOT PATH NEW_DIRECTORY\nSupply password on stdin. GTK client: restic-studio-gui."
         );
         return Ok(());
     }
@@ -76,15 +101,11 @@ fn main() -> Result<()> {
         )?,
         "backup" | "run-profile" | "preview" => {
             let argument = args.get(1).context("Profile missing")?;
-            let path = if args[0] == "run-profile" {
-                restic_core::valid_id(argument)?;
-                restic_core::state_dir()?
-                    .join("profiles")
-                    .join(format!("{argument}.json"))
+            let profile: Profile = if args[0] == "run-profile" {
+                restic_core::load_profile(&restic_core::state_dir()?.join("profiles"), argument)?
             } else {
-                argument.into()
+                serde_json::from_reader(io::Read::take(std::fs::File::open(argument)?, 1 << 20))?
             };
-            let profile: Profile = serde_json::from_reader(std::fs::File::open(path)?)?;
             let directory = restic_core::state_dir()?;
             let mut progress = |event| {
                 if let Event::Json(value) = event
