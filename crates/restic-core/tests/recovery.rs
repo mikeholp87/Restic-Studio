@@ -230,15 +230,24 @@ fn swapped_repository_is_refused() -> anyhow::Result<()> {
 }
 /// A stand-in Restic that prints `count` snapshots as one JSON line.
 fn fake_restic(dir: &std::path::Path, count: u32) -> anyhow::Result<Engine> {
-    use std::os::unix::fs::PermissionsExt;
+    // Install via an external `install` so this process never holds the script open for
+    // writing; a parallel test's fork would otherwise make exec fail with ETXTBSY.
+    let source = dir.join("restic.src");
     let script = dir.join("restic");
     fs::write(
-        &script,
+        &source,
         format!(
             "#!/bin/sh\ncat >/dev/null\nawk 'BEGIN{{printf \"[\"; for(i=0;i<{count};i++){{if(i)printf \",\"; printf \"{{\\\"id\\\":\\\"%064d\\\",\\\"time\\\":\\\"2026-01-01T00:00:00Z\\\",\\\"paths\\\":[\\\"/home\\\"],\\\"hostname\\\":\\\"h\\\",\\\"tags\\\":[]}}\", i}}; print \"]\"}}'\n"
         ),
     )?;
-    fs::set_permissions(&script, fs::Permissions::from_mode(0o755))?;
+    anyhow::ensure!(
+        std::process::Command::new("install")
+            .arg("-m755")
+            .arg(&source)
+            .arg(&script)
+            .status()?
+            .success()
+    );
     Ok(Engine {
         executable: script,
         ..Engine::default()
