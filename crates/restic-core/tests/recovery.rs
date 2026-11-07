@@ -41,6 +41,7 @@ fn disposable_recovery() -> anyhow::Result<()> {
     };
     let engine = Engine {
         cache_dir: Some(temp.path().join("cache")),
+        state_dir: Some(temp.path().join("state")),
         ..Engine::default()
     };
     let password = "fixture password";
@@ -186,6 +187,45 @@ fn disposable_recovery() -> anyhow::Result<()> {
             .backup(&missing, password, Arc::default(), |_| {})
             .is_err()
     );
+    Ok(())
+}
+#[test]
+fn swapped_repository_is_refused() -> anyhow::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("source");
+    fs::create_dir(&source)?;
+    fs::write(source.join("file"), b"data")?;
+    let repo = Repository {
+        location: temp.path().join("repo").to_string_lossy().into(),
+    };
+    let engine = Engine {
+        cache_dir: Some(temp.path().join("cache")),
+        state_dir: Some(temp.path().join("state")),
+        ..Engine::default()
+    };
+    let profile = Profile {
+        id: "swap".into(),
+        name: "Swap".into(),
+        repository: repo.clone(),
+        sources: vec![source],
+        excludes: vec![],
+        one_file_system: false,
+    };
+    engine.init(&repo, "pw one")?;
+    let first = engine.repository_id(&repo, "pw one")?;
+    assert_eq!(first.len(), 64);
+    // First backup pins the ID; a second backup to the same repository is accepted.
+    engine.backup(&profile, "pw one", Arc::default(), |_| {})?;
+    engine.backup(&profile, "pw one", Arc::default(), |_| {})?;
+    // A different repository appears at the same path.
+    fs::remove_dir_all(temp.path().join("repo"))?;
+    engine.init(&repo, "pw two")?;
+    assert_ne!(engine.repository_id(&repo, "pw two")?, first);
+    let error = engine
+        .backup(&profile, "pw two", Arc::default(), |_| {})
+        .unwrap_err();
+    assert!(error.to_string().contains("identity changed"), "{error}");
+    assert!(engine.snapshots(&repo, "pw two")?.is_empty());
     Ok(())
 }
 #[test]

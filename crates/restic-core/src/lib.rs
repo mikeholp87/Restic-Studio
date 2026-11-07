@@ -179,12 +179,15 @@ pub fn classify(code: Option<i32>, cancelled: bool, backup: bool) -> Outcome {
 pub struct Engine {
     pub executable: PathBuf,
     pub cache_dir: Option<PathBuf>,
+    /// Where repository identities are pinned; defaults to `state_dir()`.
+    pub state_dir: Option<PathBuf>,
 }
 impl Default for Engine {
     fn default() -> Self {
         Self {
             executable: PathBuf::from("/usr/bin/restic"),
             cache_dir: None,
+            state_dir: None,
         }
     }
 }
@@ -225,6 +228,75 @@ impl Engine {
             problems.push("/dev/stdin is missing; the password pipe needs it".into());
         }
         Capabilities { version, problems }
+    }
+    /// Restic's own repository ID, read from the decrypted `config`.
+    pub fn repository_id(&self, repo: &Repository, password: &str) -> Result<String> {
+        let mut text = String::new();
+        let result = self.run(
+            repo,
+            password,
+            &["cat".into(), "config".into()],
+            Arc::default(),
+            |event| match event {
+                Event::Diagnostic(line) => text.push_str(&line),
+                Event::Json(value) => text.push_str(&value.to_string()),
+            },
+        )?;
+        ensure!(
+            result.outcome == Outcome::Success,
+            "Repository identity unavailable: {:?}",
+            result.outcome
+        );
+        // run() redacts the password from output; a short password could corrupt the ID.
+        ensure!(
+            !text.contains("[REDACTED]"),
+            "Cannot read repository identity: the password appears in the ID"
+        );
+        let id = serde_json::from_str::<Value>(&text)?
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .context("Repository config has no ID")?;
+        ensure!(snapshot_id(&id).is_ok(), "Repository ID is malformed");
+        Ok(id)
+    }
+    /// Trust on first use: pin the repository's ID per path, refuse a different one later.
+    /// ponytail: unlocked read-modify-write; add a lock if GUI and runner pin concurrently.
+    pub fn verify_identity(&self, repo: &Repository, password: &str) -> Result<()> {
+        let key = resolved_destination(Path::new(&repo.location))?
+            .to_string_lossy()
+            .into_owned();
+        let directory = match &self.state_dir {
+            Some(path) => path.clone(),
+            None => state_dir()?,
+        };
+        let file = directory.join("repository-ids.json");
+        let mut pins: std::collections::BTreeMap<String, String> = match fs::read(&file) {
+            Ok(bytes) => {
+                serde_json::from_slice(&bytes).context("repository-ids.json is corrupt")?
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Default::default(),
+            Err(error) => return Err(error.into()),
+        };
+        let actual = self.repository_id(repo, password)?;
+        match pins.get(&key) {
+            Some(pinned) if *pinned == actual => return Ok(()),
+            Some(_) => bail!(
+                "The repository at this location is not the one used before (identity changed). \
+                 If you replaced it on purpose, remove its entry from {}",
+                file.display()
+            ),
+            None => {}
+        }
+        pins.insert(key, actual);
+        fs::create_dir_all(&directory)?;
+        let mut temp = tempfile::NamedTempFile::new_in(&directory)?;
+        temp.as_file()
+            .set_permissions(fs::Permissions::from_mode(0o600))?;
+        serde_json::to_writer_pretty(&mut temp, &pins)?;
+        temp.as_file().sync_all()?;
+        temp.persist(file)?;
+        Ok(())
     }
     pub fn run(
         &self,
@@ -469,6 +541,7 @@ impl Engine {
                 .is_file(),
             "Repository unavailable; refusing to create a substitute destination"
         );
+        self.verify_identity(&profile.repository, password)?;
         let mut args: Vec<OsString> = vec![
             "backup".into(),
             "--tag".into(),
@@ -625,6 +698,7 @@ impl Engine {
         event: impl FnMut(Event),
     ) -> Result<JobResult> {
         snapshot_id(snapshot)?;
+        self.verify_identity(repo, password)?;
         ensure!(
             selected.starts_with('/')
                 && !selected.contains('\0')
@@ -804,7 +878,7 @@ mod tests {
         assert_eq!(parse_version("garbage"), None);
         let missing = Engine {
             executable: "/nonexistent/restic".into(),
-            cache_dir: None,
+            ..Engine::default()
         };
         let found = missing.probe();
         assert!(!found.ok() && found.version.is_none());
