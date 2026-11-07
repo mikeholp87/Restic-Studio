@@ -109,3 +109,11 @@ stable drive UUIDs. A drive can be swapped before selection. There is no verifie
 physical-disk warning, repository identity pin across sessions, desktop UI test,
 large snapshot array test, or adversarial symlink restore test. The application
 cannot yet be certified for unattended or full-system backups.
+
+## Progress dialog manual check — 2026-11-07
+
+The user launched the installed `0.1.0-8` GUI on a desktop session and exercised the
+backup/restore progress dialog against a disposable repository; it displayed correctly.
+Which of backup, restore, Stop and preview were exercised was not recorded. This is
+a manual spot check, not an end-to-end acceptance pass; the first graphical milestone
+in remaining-work.md is still open.
