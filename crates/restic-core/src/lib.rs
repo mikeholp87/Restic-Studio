@@ -100,6 +100,28 @@ fn parse_version(text: &str) -> Option<(u32, u32, u32)> {
     Some((next()?, next()?, next()?))
 }
 
+/// Held for the length of a job on one repository; released on drop (or process exit).
+#[derive(Debug)]
+pub struct JobLock(#[allow(dead_code)] fs::File);
+/// FNV-1a: a stable name for a lock file, so every client and version derives the same one.
+fn fnv1a(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf29ce484222325, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
+    })
+}
+fn flock(file: &fs::File, operation: i32) -> bool {
+    use std::os::fd::AsRawFd;
+    unsafe { libc::flock(file.as_raw_fd(), operation) == 0 }
+}
+fn open_lock(directory: &Path, name: &str) -> Result<fs::File> {
+    Ok(OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(directory.join(name))?)
+}
+
 #[derive(Debug, Serialize)]
 pub struct MountInfo {
     pub mount_point: PathBuf,
@@ -337,16 +359,42 @@ impl Engine {
         ensure!(snapshot_id(&id).is_ok(), "Repository ID is malformed");
         Ok(id)
     }
+    fn state(&self) -> Result<PathBuf> {
+        match &self.state_dir {
+            Some(path) => {
+                fs::create_dir_all(path)?;
+                Ok(path.clone())
+            }
+            None => state_dir(),
+        }
+    }
+    /// Claim one repository for a job so the GUI, runner and other instances cannot overlap.
+    /// Fails at once, rather than waiting, if another job holds it.
+    pub fn lock_repository(&self, repo: &Repository) -> Result<JobLock> {
+        let key = resolved_destination(Path::new(&repo.location))?;
+        let name = format!(
+            "job-{:016x}.lock",
+            fnv1a(key.as_os_str().as_encoded_bytes())
+        );
+        let file = open_lock(&self.state()?, &name)?;
+        ensure!(
+            flock(&file, libc::LOCK_EX | libc::LOCK_NB),
+            "Another Restic Studio job is already using this repository"
+        );
+        Ok(JobLock(file))
+    }
     /// Trust on first use: pin the repository's ID per path, refuse a different one later.
-    /// ponytail: unlocked read-modify-write; add a lock if GUI and runner pin concurrently.
     pub fn verify_identity(&self, repo: &Repository, password: &str) -> Result<()> {
         let key = resolved_destination(Path::new(&repo.location))?
             .to_string_lossy()
             .into_owned();
-        let directory = match &self.state_dir {
-            Some(path) => path.clone(),
-            None => state_dir()?,
-        };
+        let directory = self.state()?;
+        // Pins for different repositories share one file: serialise the read-modify-write.
+        let pin_lock = open_lock(&directory, "pins.lock")?;
+        ensure!(
+            flock(&pin_lock, libc::LOCK_EX),
+            "Could not lock the identity pins"
+        );
         let file = directory.join("repository-ids.json");
         let mut pins: std::collections::BTreeMap<String, String> = match fs::read(&file) {
             Ok(bytes) => {
@@ -594,6 +642,7 @@ impl Engine {
     }
     pub fn init(&self, repo: &Repository, password: &str) -> Result<JobResult> {
         ensure_mounted(Path::new(&repo.location))?;
+        let _job = self.lock_repository(repo)?;
         let path = Path::new(&repo.location);
         ensure!(
             !path.exists() || fs::read_dir(path)?.next().is_none(),
@@ -634,6 +683,7 @@ impl Engine {
                 .is_file(),
             "Repository unavailable; refusing to create a substitute destination"
         );
+        let _job = self.lock_repository(&profile.repository)?;
         self.verify_identity(&profile.repository, password)?;
         let mut args: Vec<OsString> = vec![
             "backup".into(),
@@ -794,6 +844,7 @@ impl Engine {
         event: impl FnMut(Event),
     ) -> Result<JobResult> {
         snapshot_id(snapshot)?;
+        let _job = self.lock_repository(repo)?;
         self.verify_identity(repo, password)?;
         ensure!(
             selected.starts_with('/')

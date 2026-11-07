@@ -260,6 +260,53 @@ fn large_snapshot_list_is_parsed_within_the_limit() -> anyhow::Result<()> {
     Ok(())
 }
 #[test]
+fn concurrent_jobs_on_one_repository_are_refused() -> anyhow::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("source");
+    fs::create_dir(&source)?;
+    fs::write(source.join("file"), b"data")?;
+    let repo = |name: &str| Repository {
+        location: temp.path().join(name).to_string_lossy().into(),
+    };
+    let (busy, idle) = (repo("busy"), repo("idle"));
+    let engine = Engine {
+        cache_dir: Some(temp.path().join("cache")),
+        state_dir: Some(temp.path().join("state")),
+        ..Engine::default()
+    };
+    engine.init(&busy, "pw")?;
+    engine.init(&idle, "pw")?;
+    let profile = Profile {
+        id: "busy".into(),
+        name: "Busy".into(),
+        repository: busy.clone(),
+        sources: vec![source],
+        excludes: vec![],
+        one_file_system: false,
+    };
+    let held = engine.lock_repository(&busy)?;
+    // Another client claiming the same repository is refused, not queued.
+    let error = engine
+        .backup(&profile, "pw", Arc::default(), |_| {})
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("Another Restic Studio job"),
+        "{error}"
+    );
+    assert!(engine.lock_repository(&busy).is_err());
+    // A different repository is not affected.
+    let _other = engine.lock_repository(&idle)?;
+    // Releasing the claim lets the job run.
+    drop(held);
+    assert_eq!(
+        engine
+            .backup(&profile, "pw", Arc::default(), |_| {})?
+            .outcome,
+        Outcome::Success
+    );
+    Ok(())
+}
+#[test]
 fn outcomes_and_identifiers() {
     assert_eq!(classify(Some(3), false, true), Outcome::Partial);
     assert_eq!(classify(Some(3), false, false), Outcome::Failed);

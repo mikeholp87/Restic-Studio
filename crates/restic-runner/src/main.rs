@@ -86,12 +86,6 @@ fn main() -> Result<()> {
             };
             let profile: Profile = serde_json::from_reader(std::fs::File::open(path)?)?;
             let directory = restic_core::state_dir()?;
-            let lock = std::fs::File::create(directory.join("job.lock"))?;
-            use std::os::fd::AsRawFd;
-            ensure!(
-                unsafe { libc_flock(lock.as_raw_fd()) },
-                "Another Studio job is active"
-            );
             let mut progress = |event| {
                 if let Event::Json(value) = event
                     && value.get("message_type").and_then(|v| v.as_str()) == Some("status")
@@ -128,7 +122,4 @@ fn main() -> Result<()> {
         result.outcome
     );
     Ok(())
-}
-unsafe fn libc_flock(fd: i32) -> bool {
-    unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) == 0 }
 }
