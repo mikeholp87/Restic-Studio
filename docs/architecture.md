@@ -31,8 +31,13 @@ Cancellation uses SIGINT and waits for Restic cleanup; there is no forced-kill U
 The GUI checks the device number of a selected destination folder before each
 operation. The core pins the repository directory for the duration of each Restic
 subprocess, so an unmount or path replacement cannot redirect an operation already
-in progress through that pathname. Stable drive identity across sessions remains
-future work.
+in progress through that pathname. Backup and restore keep that same repository
+directory open from the Restic ID check through the operation. The first successful
+operation pins the Restic ID and, when available, the udev disk WWN or serial number.
+Later operations refuse a changed or unavailable pinned disk identifier. Disks without
+an exposed identifier retain only the Restic ID check; identifiers can be duplicated
+or change with adapters, and are not proof of physical identity. The pins are stored in
+`repository-ids.json` in the application's state directory.
 
 ## Restore transaction
 

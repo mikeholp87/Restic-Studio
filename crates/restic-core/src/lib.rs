@@ -122,6 +122,38 @@ fn open_lock(directory: &Path, name: &str) -> Result<fs::File> {
         .open(directory.join(name))?)
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum RepositoryPin {
+    Legacy(String),
+    Current { id: String, drive: Option<String> },
+}
+
+fn udev_drive_id(data: &str) -> Option<String> {
+    ["E:ID_WWN_WITH_EXTENSION=", "E:ID_WWN=", "E:ID_SERIAL="]
+        .iter()
+        .find_map(|prefix| {
+            data.lines()
+                .find_map(|line| line.strip_prefix(prefix).filter(|value| !value.is_empty()))
+        })
+        .map(str::to_owned)
+}
+
+fn drive_id(path: &Path) -> Result<Option<String>> {
+    use std::os::unix::fs::MetadataExt;
+    let device = fs::metadata(path)?.dev();
+    let data = format!(
+        "/run/udev/data/b{}:{}",
+        libc::major(device),
+        libc::minor(device)
+    );
+    match fs::read_to_string(data) {
+        Ok(data) => Ok(udev_drive_id(&data)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct MountInfo {
     pub mount_point: PathBuf,
@@ -175,13 +207,11 @@ pub fn mount_info(path: &Path) -> Result<MountInfo> {
     parse_mount(&fs::read_to_string("/proc/self/mountinfo")?, &real)
         .context("Could not find the mount for this location")
 }
-/// True when `path` sits under a usual drive mount directory but resolves to the system
-/// disk, i.e. the drive is not mounted and writing would fill an empty mount point.
+/// True when a usual drive location resolves outside its mount directory.
 fn unmounted_drive_location(info: &MountInfo, path: &Path) -> bool {
-    info.mount_point == Path::new("/")
-        && ["/media", "/mnt", "/run/media"]
-            .iter()
-            .any(|dir| path.starts_with(dir))
+    ["/media", "/mnt", "/run/media"]
+        .iter()
+        .any(|dir| path.starts_with(dir) && !info.mount_point.starts_with(dir))
 }
 pub fn ensure_mounted(path: &Path) -> Result<MountInfo> {
     let info = mount_info(path)?;
@@ -385,6 +415,28 @@ impl Engine {
     }
     /// Trust on first use: pin the repository's ID per path, refuse a different one later.
     pub fn verify_identity(&self, repo: &Repository, password: &str) -> Result<()> {
+        self.verify_identity_at(repo, repo, password)
+    }
+    fn verify_identity_at(
+        &self,
+        repo: &Repository,
+        opened: &Repository,
+        password: &str,
+    ) -> Result<()> {
+        self.verify_identity_with_drive(
+            repo,
+            opened,
+            password,
+            drive_id(Path::new(&opened.location))?,
+        )
+    }
+    fn verify_identity_with_drive(
+        &self,
+        repo: &Repository,
+        opened: &Repository,
+        password: &str,
+        drive: Option<String>,
+    ) -> Result<()> {
         let key = resolved_destination(Path::new(&repo.location))?
             .to_string_lossy()
             .into_owned();
@@ -396,24 +448,39 @@ impl Engine {
             "Could not lock the identity pins"
         );
         let file = directory.join("repository-ids.json");
-        let mut pins: std::collections::BTreeMap<String, String> = match fs::read(&file) {
+        let mut pins: std::collections::BTreeMap<String, RepositoryPin> = match fs::read(&file) {
             Ok(bytes) => {
                 serde_json::from_slice(&bytes).context("repository-ids.json is corrupt")?
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Default::default(),
             Err(error) => return Err(error.into()),
         };
-        let actual = self.repository_id(repo, password)?;
+        let actual = self.repository_id(opened, password)?;
         match pins.get(&key) {
-            Some(pinned) if *pinned == actual => return Ok(()),
-            Some(_) => bail!(
-                "The repository at this location is not the one used before (identity changed). \
+            Some(RepositoryPin::Legacy(id) | RepositoryPin::Current { id, .. })
+                if *id != actual =>
+            {
+                bail!(
+                    "The repository at this location is not the one used before (identity changed). \
                  If you replaced it on purpose, remove its entry from {}",
-                file.display()
-            ),
-            None => {}
+                    file.display()
+                )
+            }
+            Some(RepositoryPin::Current {
+                drive: Some(pinned),
+                ..
+            }) => {
+                ensure!(
+                    drive.as_ref() == Some(pinned),
+                    "The repository drive identity changed or is unavailable. Reconnect the original drive; if it was intentionally replaced, remove its entry from {}",
+                    file.display()
+                );
+                return Ok(());
+            }
+            Some(RepositoryPin::Current { drive: None, .. }) if drive.is_none() => return Ok(()),
+            _ => {}
         }
-        pins.insert(key, actual);
+        pins.insert(key, RepositoryPin::Current { id: actual, drive });
         fs::create_dir_all(&directory)?;
         let mut temp = tempfile::NamedTempFile::new_in(&directory)?;
         temp.as_file()
@@ -422,6 +489,29 @@ impl Engine {
         temp.as_file().sync_all()?;
         temp.persist(file)?;
         Ok(())
+    }
+    fn pin_repository(&self, repo: &Repository) -> Result<(fs::File, Repository)> {
+        use std::os::fd::AsRawFd;
+        let path = Path::new(&repo.location);
+        ensure!(
+            path.is_absolute(),
+            "Only local absolute repositories are supported"
+        );
+        ensure!(
+            !path
+                .components()
+                .any(|part| matches!(part, std::path::Component::ParentDir)),
+            "Repository path may not contain parent traversal"
+        );
+        ensure_mounted(path)?;
+        let handle = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY)
+            .open(path)?;
+        let opened = Repository {
+            location: format!("/proc/{}/fd/{}", std::process::id(), handle.as_raw_fd()),
+        };
+        Ok((handle, opened))
     }
     pub fn run(
         &self,
@@ -684,7 +774,8 @@ impl Engine {
             "Repository unavailable; refusing to create a substitute destination"
         );
         let _job = self.lock_repository(&profile.repository)?;
-        self.verify_identity(&profile.repository, password)?;
+        let (_repository_handle, opened) = self.pin_repository(&profile.repository)?;
+        self.verify_identity_at(&profile.repository, &opened, password)?;
         let mut args: Vec<OsString> = vec![
             "backup".into(),
             "--tag".into(),
@@ -697,7 +788,8 @@ impl Engine {
                 .is_ok_and(|path| path == Path::new("/"))
         }) {
             excludes.push(
-                resolved_destination(Path::new(&profile.repository.location))?
+                Path::new(&opened.location)
+                    .canonicalize()?
                     .to_string_lossy()
                     .into_owned(),
             );
@@ -717,16 +809,13 @@ impl Engine {
                 .map(str::to_owned),
             );
             if let Some(hostname) = current_hostname()
-                && self
-                    .snapshots(&profile.repository, password)?
-                    .iter()
-                    .any(|snapshot| {
-                        snapshot.hostname == hostname
-                            && snapshot
-                                .paths
-                                .iter()
-                                .any(|path| path == "/home" || path.starts_with("/home/"))
-                    })
+                && self.snapshots(&opened, password)?.iter().any(|snapshot| {
+                    snapshot.hostname == hostname
+                        && snapshot
+                            .paths
+                            .iter()
+                            .any(|path| path == "/home" || path.starts_with("/home/"))
+                })
             {
                 excludes.push("/home".into());
             }
@@ -742,7 +831,7 @@ impl Engine {
         }
         args.push("--".into());
         args.extend(profile.sources.iter().map(|p| p.as_os_str().into()));
-        self.run(&profile.repository, password, &args, cancel, event)
+        self.run(&opened, password, &args, cancel, event)
     }
     pub fn snapshots(&self, repo: &Repository, password: &str) -> Result<Vec<Snapshot>> {
         let mut snapshots = None;
@@ -845,7 +934,8 @@ impl Engine {
     ) -> Result<JobResult> {
         snapshot_id(snapshot)?;
         let _job = self.lock_repository(repo)?;
-        self.verify_identity(repo, password)?;
+        let (_repository_handle, opened) = self.pin_repository(repo)?;
+        self.verify_identity_at(repo, &opened, password)?;
         ensure!(
             selected.starts_with('/')
                 && !selected.contains('\0')
@@ -923,7 +1013,7 @@ impl Engine {
             "never".into(),
             "--verify".into(),
         ];
-        let mut result = self.run(repo, password, &args, cancel.clone(), event)?;
+        let mut result = self.run(&opened, password, &args, cancel.clone(), event)?;
         if cancel.load(Ordering::Relaxed) || result.outcome == Outcome::Cancelled {
             result.outcome = Outcome::Cancelled;
             return Ok(result);
@@ -1110,7 +1200,101 @@ mod tests {
             &root,
             Path::new("/home/mike/repo")
         ));
+        let run = parse_mount(
+            "22 1 0:1 / /run rw - tmpfs tmpfs rw\n",
+            Path::new("/run/media/user/disk"),
+        )
+        .unwrap();
+        assert!(unmounted_drive_location(
+            &run,
+            Path::new("/run/media/user/disk")
+        ));
         assert!(ensure_mounted(Path::new("/proc")).is_ok());
         assert!(ensure_mounted(Path::new("/media/definitely-not-mounted/x")).is_err());
+    }
+
+    #[test]
+    fn pinned_repository_survives_path_replacement() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let engine = Engine {
+            state_dir: Some(temp.path().join("state")),
+            cache_dir: Some(temp.path().join("cache")),
+            ..Engine::default()
+        };
+        let repo = Repository {
+            location: temp.path().join("repo").to_string_lossy().into_owned(),
+        };
+        assert!(
+            engine
+                .pin_repository(&Repository {
+                    location: "relative".into()
+                })
+                .is_err()
+        );
+        assert!(
+            engine
+                .pin_repository(&Repository {
+                    location: "/tmp/../tmp".into()
+                })
+                .is_err()
+        );
+        let replacement = Repository {
+            location: temp
+                .path()
+                .join("replacement")
+                .to_string_lossy()
+                .into_owned(),
+        };
+        engine.init(&repo, "password")?;
+        engine.init(&replacement, "password")?;
+        let (handle, opened) = engine.pin_repository(&repo)?;
+        engine.verify_identity_at(&repo, &opened, "password")?;
+        let original_id = engine.repository_id(&opened, "password")?;
+        fs::rename(&repo.location, temp.path().join("original"))?;
+        fs::rename(&replacement.location, &repo.location)?;
+        assert_ne!(engine.repository_id(&repo, "password")?, original_id);
+        assert_eq!(engine.repository_id(&opened, "password")?, original_id);
+        engine.verify_identity_at(&repo, &opened, "password")?;
+        assert!(engine.verify_identity(&repo, "password").is_err());
+        drop(handle);
+        Ok(())
+    }
+
+    #[test]
+    fn drive_identity_migrates_legacy_pin_and_rejects_swap() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let engine = Engine {
+            state_dir: Some(temp.path().join("state")),
+            cache_dir: Some(temp.path().join("cache")),
+            ..Engine::default()
+        };
+        let repo = Repository {
+            location: temp.path().join("repo").to_string_lossy().into_owned(),
+        };
+        engine.init(&repo, "password")?;
+        let id = engine.repository_id(&repo, "password")?;
+        fs::write(
+            temp.path().join("state/repository-ids.json"),
+            serde_json::to_vec(&serde_json::json!({ &repo.location: id }))?,
+        )?;
+        let first = Some("drive-a".to_owned());
+        engine.verify_identity_with_drive(&repo, &repo, "password", first.clone())?;
+        engine.verify_identity_with_drive(&repo, &repo, "password", first)?;
+        assert!(
+            engine
+                .verify_identity_with_drive(&repo, &repo, "password", Some("drive-b".into()))
+                .is_err()
+        );
+        assert!(
+            engine
+                .verify_identity_with_drive(&repo, &repo, "password", None)
+                .is_err()
+        );
+        assert_eq!(
+            udev_drive_id("E:ID_SERIAL=serial\nE:ID_WWN=wwn\n"),
+            Some("wwn".into())
+        );
+        assert_eq!(udev_drive_id("E:ID_SERIAL=\n"), None);
+        Ok(())
     }
 }
