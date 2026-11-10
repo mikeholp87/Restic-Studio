@@ -1,0 +1,94 @@
+name: Release
+# Push a tag like v0.1.0-13 to build the .deb and publish a GitHub Release.
+# Pull requests that touch the packaging run the same build as a dry run
+# (nothing is published). The central apt repository picks the .deb up from the
+# Release; this workflow knows nothing about apt.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - packaging/**
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    # The package targets Debian sid (GTK 4.24, libadwaita 1.10, glibc 2.43, restic 0.19;
+    # forky lacks restic), so build there: library requirements come from the build machine.
+    runs-on: ubuntu-24.04
+    container: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match the package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(sed -n 's/^version=//p' packaging/debian/build.sh)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match project version $version" >&2
+            exit 1
+          fi
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential ca-certificates cargo git libadwaita-1-dev libgtk-4-dev pkg-config restic rustc sudo
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            crates/restic-gui
+      - name: Build the package
+        run: |
+          cargo test --locked
+          cargo build --locked --release
+          cargo build --locked --release --manifest-path crates/restic-gui/Cargo.toml
+          sh packaging/debian/build.sh
+      - name: Installs, verifies and removes cleanly
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          deb=$(ls dist/*.deb)
+          pkg=$(dpkg-deb -f "$deb" Package)
+          apt-get install -y "./$deb"
+          dpkg --verify "$pkg"
+          apt-get remove -y "$pkg"
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum *.deb | tee SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: |
+            dist/*.deb
+            dist/SHA256SUMS
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          deb=$(ls ./*.deb)
+          cat >notes.md <<EOF
+          ## Install
+
+          \`\`\`bash
+          sudo apt install $deb
+          \`\`\`
+
+          Verify the download with \`sha256sum -c SHA256SUMS\`.
+          EOF
+          gh release create "$GITHUB_REF_NAME" "$deb" SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "${GITHUB_REPOSITORY#*/} ${GITHUB_REF_NAME#v}" \
+            --notes-file notes.md --generate-notes

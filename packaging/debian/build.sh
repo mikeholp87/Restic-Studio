@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+version=0.1.0-13
+
 project_root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 stage=$(mktemp -d)
 trap 'rm -rf -- "$stage"' EXIT
@@ -26,14 +28,15 @@ mkdir -p "$stage/DEBIAN"
 architecture=$(dpkg --print-architecture)
 cat >"$stage/DEBIAN/control" <<EOF
 Package: restic-studio
-Version: 0.1.0-13
+Version: $version
 Section: utils
 Priority: optional
 Architecture: $architecture
-Maintainer: Restic Studio Project <noreply@localhost>
+Maintainer: Mike Holp <4627227+mikeholp87@users.noreply.github.com>
 Depends: restic (>= 0.19), libgtk-4-1 (>= 4.24), libadwaita-1-0 (>= 1.10), libc6 (>= 2.43)
 Description: Native desktop interface for local Restic backups
  Backup, browse, verify and restore local Restic repositories.
  This development preview requires user review before relying on it for recovery.
 EOF
-dpkg-deb --build --root-owner-group "$stage" "$project_root/restic-studio_0.1.0-13_${architecture}.deb"
+mkdir -p "$project_root/dist"
+dpkg-deb --build --root-owner-group "$stage" "$project_root/dist/restic-studio_${version}_${architecture}.deb"

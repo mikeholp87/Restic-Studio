@@ -22,13 +22,24 @@ This release supports **local filesystem repositories only**. An external drive 
 
 ## Install on Debian
 
-The development package for the tested Debian forky/sid environment is `restic-studio_0.1.0-8_amd64.deb`. It is not attached to GitHub as a release artifact; build it from this source checkout if needed. The package depends on the system Restic, GTK4, libadwaita, and glibc. It has not been verified on Debian 13, KDE, or X11.
+The development package targets Debian forky/sid (it depends on the system Restic 0.19, GTK 4.24, libadwaita 1.10 and glibc 2.43). It has not been verified on Debian 13, KDE, or X11.
+
+Install from the apt repository:
+
+```sh
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://mikeholp87.github.io/apt/apt.asc | sudo tee /etc/apt/keyrings/mikeholp87-apt.asc >/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/mikeholp87-apt.asc] https://mikeholp87.github.io/apt/ ./" | sudo tee /etc/apt/sources.list.d/mikeholp87-apt.list
+sudo apt update && sudo apt install restic-studio
+```
+
+Or build it from this checkout:
 
 ```sh
 cargo build --release
 cargo build --manifest-path crates/restic-gui/Cargo.toml --release
 sh packaging/debian/build.sh
-sudo apt install ./restic-studio_0.1.0-8_amd64.deb
+sudo apt install ./dist/restic-studio_*_amd64.deb
 ```
 
 Launch **Restic Studio** from the application menu or run `restic-studio-gui`. Ordinary use does not require `sudo`. See [installation and uninstall details](docs/installation.md).
