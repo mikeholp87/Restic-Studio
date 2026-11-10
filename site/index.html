@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#edeff5" />
+    <meta
+      name="description"
+      content="Restic Studio is a native GTK4 backup and restore manager for Linux, powered by Restic. Install the latest release from the signed APT repository."
+    />
+    <title>Restic Studio — Restic backups, made visual</title>
+    <link rel="icon" href="./restic-studio-icon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #edeff5;
+        --paper: #fff;
+        --ink: #14161f;
+        --muted: #4b5167;
+        --line: #d9ddea;
+        --blue: #4350e0;
+        --green: #087b57;
+        --purple: #7442d1;
+        --teal: #0a7c94;
+        font-family: Inter, "Segoe UI", system-ui, sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-width: 320px;
+      }
+      a {
+        color: var(--blue);
+        text-underline-offset: 0.2em;
+      }
+      a:focus-visible {
+        outline: 3px solid var(--blue);
+        outline-offset: 3px;
+      }
+      .wrap {
+        width: min(1080px, calc(100% - 40px));
+        margin: auto;
+      }
+      header {
+        height: 84px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--ink);
+        font-size: 19px;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+        text-decoration: none;
+      }
+      .brand img {
+        width: 38px;
+        height: 38px;
+      }
+      .nav {
+        display: flex;
+        gap: 24px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .nav a {
+        color: inherit;
+      }
+      main {
+        padding: 58px 0 72px;
+      }
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+        gap: 60px;
+        align-items: center;
+        padding: 28px 0 68px;
+      }
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        color: var(--green);
+        font-size: 13px;
+        font-weight: 650;
+      }
+      .eyebrow::before {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+        content: "";
+      }
+      h1 {
+        max-width: 600px;
+        margin: 19px 0 18px;
+        font-size: clamp(42px, 6vw, 68px);
+        line-height: 0.99;
+        letter-spacing: -0.065em;
+      }
+      .lead {
+        max-width: 510px;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.65;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        margin-top: 27px;
+      }
+      .button {
+        display: inline-flex;
+        min-height: 46px;
+        align-items: center;
+        justify-content: center;
+        padding: 0 18px;
+        border: 1px solid var(--blue);
+        border-radius: 7px;
+        background: var(--blue);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 650;
+        text-decoration: none;
+      }
+      .button.secondary {
+        background: transparent;
+        color: var(--ink);
+        border-color: var(--line);
+      }
+      .scope {
+        margin-top: 22px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .scope strong {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .panel {
+        overflow: hidden;
+        padding: 22px;
+        border: 1px solid #d8dced;
+        border-radius: 12px;
+        background: var(--paper);
+        box-shadow: 0 18px 45px #22284a12;
+      }
+      .panel-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--line);
+        font-size: 13px;
+        font-weight: 650;
+      }
+      .tag {
+        color: var(--green);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .steps {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .steps li {
+        display: grid;
+        grid-template-columns: 4px 1fr;
+        gap: 14px;
+        padding: 15px 0;
+        border-bottom: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .steps li:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+      }
+      .steps li::before {
+        border-radius: 2px;
+        background: var(--tone);
+        content: "";
+      }
+      .steps b {
+        display: block;
+        color: var(--ink);
+        font-size: 14px;
+      }
+      .install {
+        display: grid;
+        grid-template-columns: minmax(220px, 0.68fr) minmax(0, 1.32fr);
+        gap: 48px;
+        padding: 42px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--paper);
+      }
+      h2 {
+        margin: 0 0 12px;
+        font-size: 28px;
+        letter-spacing: -0.045em;
+      }
+      .install > * {
+        min-width: 0;
+      }
+      .install-copy p,
+      .fine {
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.65;
+      }
+      .install-copy p {
+        margin: 0 0 16px;
+      }
+      .code {
+        overflow-x: auto;
+        margin: 0;
+        padding: 22px;
+        border-radius: 8px;
+        background: #171b2b;
+        color: #f2f3fa;
+        font:
+          12px/1.8 ui-monospace,
+          SFMono-Regular,
+          Consolas,
+          monospace;
+        tab-size: 2;
+      }
+      .fine {
+        margin: 14px 0 0;
+        font-size: 12px;
+      }
+      .details {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 28px;
+        padding: 54px 0 0;
+      }
+      .detail {
+        padding-top: 16px;
+        border-top: 1px solid var(--line);
+      }
+      .detail h3 {
+        margin: 0 0 8px;
+        font-size: 16px;
+        letter-spacing: -0.02em;
+      }
+      .detail p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 20px 0 28px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+      }
+      @media (max-width: 760px) {
+        .wrap {
+          width: min(100% - 32px, 540px);
+        }
+        header {
+          height: 70px;
+        }
+        .nav {
+          gap: 14px;
+          font-size: 12px;
+        }
+        main {
+          padding-top: 35px;
+        }
+        .hero,
+        .install {
+          grid-template-columns: 1fr;
+          gap: 28px;
+        }
+        .hero {
+          padding: 18px 0 44px;
+        }
+                .install {
+          padding: 25px 20px;
+        }
+        .details {
+          grid-template-columns: 1fr;
+          gap: 22px;
+          padding-top: 40px;
+        }
+      }
+      @media (max-width: 420px) {
+        .nav {
+          gap: 10px;
+        }
+        .nav a:first-child {
+          display: none;
+        }
+        .code {
+          font-size: 11px;
+        }
+        footer {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <a class="brand" href="./" aria-label="Restic Studio home"
+          ><img src="./restic-studio-icon.svg" alt="" />Restic Studio</a
+        >
+        <nav class="nav" aria-label="Main navigation">
+          <a href="#install">Install</a>
+          <a href="https://github.com/mikeholp87/Restic-Studio/releases/latest">Releases</a>
+          <a href="https://github.com/mikeholp87/Restic-Studio">Source</a>
+        </nav>
+      </header>
+      <main>
+        <section class="hero" aria-labelledby="hero-title">
+          <div>
+            <div class="eyebrow">Early development preview</div>
+            <h1 id="hero-title">Restic backups, without the command line.</h1>
+            <p class="lead">
+              Restic Studio is a native Linux app for backing up a folder to an encrypted Restic
+              repository, including one on a mounted external drive, then browsing and restoring
+              what you saved.
+            </p>
+            <div class="actions">
+              <a class="button" href="#install">Install Restic Studio</a>
+              <a
+                class="button secondary"
+                href="https://github.com/mikeholp87/Restic-Studio/releases/latest"
+                >View latest release</a
+              >
+            </div>
+            <p class="scope">
+              <strong>Linux · amd64</strong> &nbsp; Debian sid (forky/sid). Local repositories only.
+            </p>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <span>From folder to snapshot</span><span class="tag">GTK4 · libadwaita</span>
+            </div>
+            <ol class="steps">
+              <li style="--tone: var(--blue)">
+                <span><b>Preview</b>Dry run shows what would be backed up. Nothing is uploaded.</span>
+              </li>
+              <li style="--tone: var(--green)">
+                <span><b>Back up</b>Progress popup with Restic's file and byte counts.</span>
+              </li>
+              <li style="--tone: var(--purple)">
+                <span><b>Browse</b>List snapshots and walk their directories.</span>
+              </li>
+              <li style="--tone: var(--teal)">
+                <span><b>Restore &amp; check</b>Restore into a new folder, then verify the repository.</span>
+              </li>
+            </ol>
+          </div>
+        </section>
+        <section id="install" class="install" aria-labelledby="install-title">
+          <div class="install-copy">
+            <h2 id="install-title">Install with APT</h2>
+            <p>
+              Add the signed repository once. APT will keep Restic Studio updated with your system
+              packages.
+            </p>
+            <p>
+              The package needs Restic 0.19, GTK 4.24, libadwaita 1.10 and glibc 2.43 or newer, so it
+              installs on Debian sid, not Debian 13.
+            </p>
+          </div>
+          <div>
+            <pre class="code"><code>sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://mikeholp87.github.io/apt/apt.asc \
+  | sudo tee /etc/apt/keyrings/mikeholp87-apt.asc &gt;/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/mikeholp87-apt.asc] https://mikeholp87.github.io/apt/ ./" \
+  | sudo tee /etc/apt/sources.list.d/mikeholp87-apt.list
+sudo apt update
+sudo apt install restic-studio</code></pre>
+            <p class="fine">
+              Launch it from the application menu or run <code>restic-studio-gui</code>. To remove:
+              <code>sudo apt remove restic-studio</code>. Your repositories and snapshots are left
+              untouched.
+            </p>
+          </div>
+        </section>
+        <section class="details" aria-label="About Restic Studio">
+          <article class="detail">
+            <h3>Safe by default</h3>
+            <p>
+              Restores go into a new folder and never overwrite existing files. Restores into
+              <code>/</code>, <code>/etc</code>, <code>/usr</code> and <code>/boot</code> are
+              blocked.
+            </p>
+          </article>
+          <article class="detail">
+            <h3>Drive-aware</h3>
+            <p>
+              The app remembers the repository and drive identity and stops if an external drive
+              changes, instead of silently creating a new repository.
+            </p>
+          </article>
+          <article class="detail">
+            <h3>Your password stays with you</h3>
+            <p>
+              The repository password is entered for each operation and is never saved. A headless
+              <code>restic-studio</code> runner covers the same operations from scripts.
+            </p>
+          </article>
+        </section>
+      </main>
+      <footer>
+        <span>Restic Studio is free and open source. Not yet a verified recovery solution.</span>
+        <span
+          ><a href="https://github.com/mikeholp87/Restic-Studio">GitHub project</a> ·
+          <a href="https://github.com/mikeholp87/Restic-Studio/releases/latest">Latest release</a></span
+        >
+      </footer>
+    </div>
+  </body>
+</html>
