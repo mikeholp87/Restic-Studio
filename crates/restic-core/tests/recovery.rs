@@ -165,7 +165,7 @@ fn disposable_recovery() -> anyhow::Result<()> {
     );
     assert_eq!(
         engine
-            .run(&repo, password, &["check".into()], Arc::default(), |_| {})?
+            .check(&repo, password, Arc::default(), |_| {})?
             .outcome,
         Outcome::Success
     );
@@ -225,7 +225,16 @@ fn swapped_repository_is_refused() -> anyhow::Result<()> {
         .backup(&profile, "pw two", Arc::default(), |_| {})
         .unwrap_err();
     assert!(error.to_string().contains("identity changed"), "{error}");
-    assert!(engine.snapshots(&repo, "pw two")?.is_empty());
+    // Browsing and checking the impostor are refused too, not just writing to it.
+    for refused in [
+        engine.snapshots(&repo, "pw two").map(|_| ()),
+        engine
+            .check(&repo, "pw two", Arc::default(), |_| {})
+            .map(|_| ()),
+    ] {
+        let error = refused.unwrap_err();
+        assert!(error.to_string().contains("identity changed"), "{error}");
+    }
     Ok(())
 }
 /// A stand-in Restic that prints `count` snapshots as one JSON line.
@@ -250,6 +259,7 @@ fn fake_restic(dir: &std::path::Path, count: u32) -> anyhow::Result<Engine> {
     );
     Ok(Engine {
         executable: script,
+        state_dir: Some(dir.join("state")),
         ..Engine::default()
     })
 }

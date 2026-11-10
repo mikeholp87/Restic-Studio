@@ -9,7 +9,7 @@ name = "restic-studio"
 path = "src/main.rs"
 
 [dependencies]
-restic-core = { path = "../restic-core" }
+restic-core.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
 libc.workspace = true

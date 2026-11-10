@@ -17,8 +17,7 @@ Launch **Restic Studio** from the application menu, or run
 To rebuild after code changes:
 
 ```sh
-cargo build --release
-cargo build --manifest-path crates/restic-gui/Cargo.toml --release
+cargo build --workspace --release
 sh packaging/debian/build.sh
 ```
 

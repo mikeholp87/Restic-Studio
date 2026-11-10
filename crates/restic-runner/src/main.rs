@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail, ensure};
-use restic_core::{Engine, Event, Outcome, Profile, Repository};
+use restic_core::{Engine, Event, Outcome, Repository};
 use std::{
     io::{self, Read},
     path::Path,
@@ -49,8 +49,7 @@ fn main() -> Result<()> {
             ),
             "profile-save" => {
                 let file = args.get(1).context("profile-save PROFILE.json")?;
-                let profile: Profile =
-                    serde_json::from_reader(io::Read::take(std::fs::File::open(file)?, 1 << 20))?;
+                let profile = restic_core::read_profile_file(Path::new(file))?;
                 restic_core::save_profile(&profile, &store)?;
                 println!("Saved profile {}", profile.id);
             }
@@ -92,19 +91,13 @@ fn main() -> Result<()> {
             })?;
             return Ok(());
         }
-        "check" => engine.run(
-            &location()?,
-            &secret,
-            &["check".into()],
-            Arc::default(),
-            |_| {},
-        )?,
+        "check" => engine.check(&location()?, &secret, Arc::default(), |_| {})?,
         "backup" | "run-profile" | "preview" => {
             let argument = args.get(1).context("Profile missing")?;
-            let profile: Profile = if args[0] == "run-profile" {
+            let profile = if args[0] == "run-profile" {
                 restic_core::load_profile(&restic_core::state_dir()?.join("profiles"), argument)?
             } else {
-                serde_json::from_reader(io::Read::take(std::fs::File::open(argument)?, 1 << 20))?
+                restic_core::read_profile_file(Path::new(argument))?
             };
             let directory = restic_core::state_dir()?;
             let mut progress = |event| {

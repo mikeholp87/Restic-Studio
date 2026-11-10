@@ -9,12 +9,12 @@ It provides a simple graphical path from a local folder to an encrypted Restic r
 | Area | Current behavior |
 | --- | --- |
 | Repositories | Initialize a new, empty local repository or open an existing one. Choose a mounted external-drive folder; the picker recognizes a repository in that folder or its single immediate child. |
-| Backup | Select one source folder, preview with Restic `backup --dry-run`, or create a snapshot with **Back Up Now**. A preview does not upload data or create a snapshot. |
+| Backup | Select one source folder, preview with Restic `backup --dry-run`, or create a snapshot with **Back Up Now**. A preview does not upload data or create a snapshot. With a saved profile loaded and its repository and first source unchanged, backup and preview use all of the profile's sources, exclusions and options; editing either field makes it a one-off manual backup. GUI backups are recorded in the same activity history as the runner's. |
 | Progress | Backup, preview, and restore show a popup with Restic's reported file and byte counts. The bar shows a percentage only when Restic reports a total. |
 | Stop | **Stop safely** requests a graceful interrupt and waits for Restic to exit. A stopped backup may still have created a snapshot; refresh the list before retrying. |
 | Snapshots | List snapshots and show up to the first 500 entries returned for a selected directory. |
 | Restore | Restore one selected file or directory into a **new** destination folder. Restic verifies the restored data; the app stages it privately and publishes it without replacing an existing destination. A stopped restore does not publish the staged files. |
-| Checks | Run Restic's repository structure check. A successful backup alone is not a health check. |
+| Checks | Run Restic's repository structure check, with the same job lock and repository identity checks as a backup. A successful backup alone is not a health check. |
 | Runner | Use the separate `restic-studio` CLI for the same core operations and JSON profile files. It records headless backup activity under XDG state. |
 | Appearance | System, light, and dark theme selection in the GTK interface. |
 
@@ -36,8 +36,7 @@ sudo apt update && sudo apt install restic-studio
 Or build it from this checkout:
 
 ```sh
-cargo build --release
-cargo build --manifest-path crates/restic-gui/Cargo.toml --release
+cargo build --workspace --release
 sh packaging/debian/build.sh
 sudo apt install ./dist/restic-studio_*_amd64.deb
 ```
@@ -49,10 +48,10 @@ For local development, install `build-essential`, `pkg-config`, `libgtk-4-dev`, 
 ```sh
 cargo build
 cargo test
-cargo run --manifest-path crates/restic-gui/Cargo.toml
+cargo run -p restic-studio-gui
 ```
 
-The GUI is a separate Cargo workspace so the core and runner can build without GTK development libraries. The tested environment used Rust 1.96.0, Restic 0.19.1, GTK 4.24.1, and libadwaita 1.10.0. The package currently declares Restic 0.19 or newer and the native library versions used for this build; other combinations require validation.
+The GUI is a workspace member outside `default-members`, so plain `cargo build` and `cargo test` cover the core and runner without GTK development libraries; add `--workspace` to include the GUI. The tested environment used Rust 1.96.0, Restic 0.19.1, GTK 4.24.1, and libadwaita 1.10.0. The package currently declares Restic 0.19 or newer and the native library versions used for this build; other combinations require validation.
 
 ## First backup
 
@@ -63,7 +62,7 @@ The GUI is a separate Cargo workspace so the core and runner can build without G
 5. Choose **Back Up Now** and watch the progress popup. Check the final outcome. Restic exit code 3 is reported as a partial backup, which may have created an incomplete snapshot.
 6. Refresh snapshots and run **Check repository**. Practice restoring a file to a new folder before relying on the backup.
 
-The app refuses to back up if the selected repository is missing and prevents recursive source/repository layouts; a `/` backup is allowed because it explicitly excludes the repository. Backup and restore remember the repository ID and, when available, the drive's hardware identifier. If a previously identified drive changes or its identifier is unavailable, the operation stops. Some drives do not expose an identifier, and cloned identifiers are possible. The GUI also checks the selected destination's device before each operation. The app does not silently create a replacement repository when a drive is unavailable.
+The app refuses to back up if the selected repository is missing and prevents recursive source/repository layouts; a `/` backup is allowed because it explicitly excludes the repository. Backup, restore and check remember the repository ID and, when available, the drive's hardware identifier. If a previously identified drive changes or its identifier is unavailable, the operation stops. Listing and browsing snapshots compare against a remembered identity but never record one. Some drives do not expose an identifier, and cloned identifiers are possible. The GUI also checks the selected destination's device before each operation. The app does not silently create a replacement repository when a drive is unavailable.
 
 When the source is `/`, Restic Studio automatically excludes the selected repository folder, plus `/dev`, `/proc`, `/sys`, `/run`, `/tmp`, `/var/tmp`, `/mnt`, `/media`, and `/lost+found`. It also excludes `/home` when the selected repository already contains a snapshot of `/home` or a subdirectory of it from this host. The app still runs as your user, so protected files outside those paths can cause a partial backup; it will report that result instead of marking it successful.
 

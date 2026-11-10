@@ -16,6 +16,51 @@ use std::{
 
 type SelectedDestination = Rc<RefCell<Option<(PathBuf, u64)>>>;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Operation {
+    Init,
+    Snapshots,
+    Backup,
+    Check,
+    Restore,
+    Preview,
+}
+impl Operation {
+    /// Long-running operations get a modal progress window with this title.
+    fn progress_title(self) -> Option<&'static str> {
+        match self {
+            Self::Backup => Some("Backing up"),
+            Self::Restore => Some("Restoring"),
+            Self::Preview => Some("Previewing backup"),
+            Self::Init | Self::Snapshots | Self::Check => None,
+        }
+    }
+}
+
+/// The profile a backup runs: the loaded one while its repository and first source are
+/// unchanged, so its saved sources, excludes and options apply; otherwise a one-off profile.
+fn backup_profile(loaded: Option<&Profile>, repository: &str, source: &str) -> Profile {
+    if let Some(profile) = loaded
+        && profile.repository.location == repository
+        && profile
+            .sources
+            .first()
+            .is_some_and(|first| first.as_os_str() == source)
+    {
+        return profile.clone();
+    }
+    Profile {
+        id: "manual".into(),
+        name: "Manual backup".into(),
+        repository: Repository {
+            location: repository.into(),
+        },
+        sources: vec![source.into()],
+        excludes: vec![],
+        one_file_system: false,
+    }
+}
+
 enum OperationUpdate {
     Progress(String, Option<f64>),
     Done(String, Vec<Snapshot>, Option<Outcome>),
@@ -298,7 +343,7 @@ fn choose_destination(
     );
 }
 fn build(app: &adw::Application) {
-    if unsafe { libc_geteuid() } == 0 {
+    if unsafe { libc::geteuid() } == 0 {
         eprintln!("Restic Studio must not run as root");
         return;
     }
@@ -352,6 +397,7 @@ fn build(app: &adw::Application) {
     content.append(&notice);
     let profile_store = restic_core::state_dir().map(|dir| dir.join("profiles"));
     let profiles: Rc<RefCell<Vec<Profile>>> = Rc::default();
+    let loaded_profile: Rc<RefCell<Option<Profile>>> = Rc::default();
     let profile_names = gtk::StringList::new(&[]);
     let profile_menu = gtk::DropDown::new(Some(profile_names.clone()), gtk::Expression::NONE);
     profile_menu.set_hexpand(true);
@@ -401,8 +447,9 @@ fn build(app: &adw::Application) {
             }
             let loading = Rc::new(Cell::new(false));
             {
-                let (profiles, repo, source, profile_name, status, loading) = (
+                let (profiles, loaded_profile, repo, source, profile_name, status, loading) = (
                     profiles.clone(),
+                    loaded_profile.clone(),
                     repo.clone(),
                     source.clone(),
                     profile_name.clone(),
@@ -411,10 +458,15 @@ fn build(app: &adw::Application) {
                 );
                 profile_menu.connect_selected_notify(move |menu| {
                     let index = menu.selected();
-                    if loading.get() || index == 0 {
+                    if loading.get() {
+                        return;
+                    }
+                    if index == 0 {
+                        *loaded_profile.borrow_mut() = None;
                         return;
                     }
                     if let Some(profile) = profiles.borrow().get(index as usize - 1) {
+                        *loaded_profile.borrow_mut() = Some(profile.clone());
                         repo.set_text(&profile.repository.location);
                         source.set_text(
                             &profile
@@ -425,7 +477,7 @@ fn build(app: &adw::Application) {
                         );
                         profile_name.set_text(&profile.name);
                         status.set_text(&if profile.sources.len() > 1 {
-                            format!("Loaded profile {}. It has {} sources; only the first is shown, so editing is disabled. Use the runner to run it.", profile.name, profile.sources.len())
+                            format!("Loaded profile {}. Back Up Now includes all {} of its sources; only the first is shown, and editing these fields switches to a one-off manual backup.", profile.name, profile.sources.len())
                         } else {
                             format!("Loaded profile {}. Enter the repository password to use it.", profile.name)
                         });
@@ -433,6 +485,7 @@ fn build(app: &adw::Application) {
                 });
             }
             {
+                let loaded_profile = loaded_profile.clone();
                 let (store, profiles, names, menu, repo, source, profile_name, status, loading) = (
                     store.clone(),
                     profiles.clone(),
@@ -471,12 +524,14 @@ fn build(app: &adw::Application) {
                             refresh_profiles(&store, &profiles, &names, &menu, Some(&id));
                             loading.set(false);
                             status.set_text(&format!("Saved profile {}. The password was not saved.", profile.name));
+                            *loaded_profile.borrow_mut() = Some(profile);
                         }
                         Err(error) => status.set_text(&format!("Could not save profile: {error:#}")),
                     }
                 });
             }
             {
+                let loaded_profile = loaded_profile.clone();
                 let (store, profiles, names, menu, status, loading, window) = (
                     store.clone(),
                     profiles.clone(),
@@ -503,9 +558,10 @@ fn build(app: &adw::Application) {
                     dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
                     dialog.set_default_response(Some("cancel"));
                     dialog.set_close_response("cancel");
-                    let (store, profiles, names, menu, status, loading) = (
+                    let (store, profiles, loaded_profile, names, menu, status, loading) = (
                         store.clone(),
                         profiles.clone(),
+                        loaded_profile.clone(),
                         names.clone(),
                         menu.clone(),
                         status.clone(),
@@ -520,6 +576,7 @@ fn build(app: &adw::Application) {
                                 loading.set(true);
                                 refresh_profiles(&store, &profiles, &names, &menu, None);
                                 loading.set(false);
+                                *loaded_profile.borrow_mut() = None;
                                 status.set_text(&format!("Deleted profile {}.", profile.name));
                             }
                             Err(error) => status.set_text(&format!("Could not delete profile: {error:#}")),
@@ -543,16 +600,11 @@ fn build(app: &adw::Application) {
         "Lost passwords can make recovery impossible. No password is saved.",
     ));
     content.append(&password);
-    let buttons: Vec<_> = [
-        "Initialize empty repository",
-        "Open / refresh snapshots",
-        "Back Up Now",
-        "Check repository",
-    ]
-    .iter()
-    .map(|s| gtk::Button::with_label(s))
-    .collect();
-    buttons[2].add_css_class("suggested-action");
+    let init_button = gtk::Button::with_label("Initialize empty repository");
+    let snapshots_button = gtk::Button::with_label("Open / refresh snapshots");
+    let backup_button = gtk::Button::with_label("Back Up Now");
+    let check_button = gtk::Button::with_label("Check repository");
+    backup_button.add_css_class("suggested-action");
     let stack = gtk::Stack::builder()
         .transition_type(gtk::StackTransitionType::Crossfade)
         .build();
@@ -571,13 +623,13 @@ fn build(app: &adw::Application) {
     backup_page.append(&root_backup_note);
     let restore_page = gtk::Box::new(gtk::Orientation::Vertical, 12);
     let backup_actions = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    for button in [&buttons[0], &buttons[2], &buttons[3]] {
+    for button in [&init_button, &backup_button, &check_button] {
         backup_actions.append(button);
     }
     let preview = gtk::Button::with_label("Preview backup (no snapshot)");
     backup_actions.append(&preview);
     backup_page.append(&backup_actions);
-    restore_page.append(&buttons[1]);
+    restore_page.append(&snapshots_button);
     stack.add_titled(&backup_page, Some("backup"), "Backup");
     stack.add_titled(&restore_page, Some("restore"), "Restore");
     content.append(&stack);
@@ -766,12 +818,15 @@ fn build(app: &adw::Application) {
             snap.set_text(id);
         }
     });
-    for (operation, button) in buttons
-        .into_iter()
-        .enumerate()
-        .chain(std::iter::once((4, restore)))
-        .chain(std::iter::once((5, preview)))
-    {
+    for (operation, button) in [
+        (Operation::Init, init_button),
+        (Operation::Snapshots, snapshots_button),
+        (Operation::Backup, backup_button),
+        (Operation::Check, check_button),
+        (Operation::Restore, restore),
+        (Operation::Preview, preview),
+    ] {
+        let loaded_profile = loaded_profile.clone();
         let (repo, source, password, snapshot, selected_path, destination, status, list) = (
             repo.clone(),
             source.clone(),
@@ -794,7 +849,7 @@ fn build(app: &adw::Application) {
                 status.set_text("The selected drive is unavailable or has changed. Reconnect and select it again.");
                 return;
             }
-            if matches!(operation, 2 | 5)
+            if matches!(operation, Operation::Backup | Operation::Preview)
                 && source_repository_overlap(&source.text(), &repo.text())
             {
                 let warning = adw::AlertDialog::new(
@@ -806,7 +861,7 @@ fn build(app: &adw::Application) {
                 warning.present(Some(&parent));
                 return;
             }
-            if operation == 1 {
+            if operation == Operation::Snapshots {
                 while let Some(child) = list.first_child() {
                     list.remove(&child);
                 }
@@ -815,16 +870,17 @@ fn build(app: &adw::Application) {
             }
             *busy.borrow_mut() = true;
             let token = Arc::new(AtomicBool::new(false));
-            let progress_ui = match operation {
-                2 => Some(progress_window(&parent, "Backing up", token.clone())),
-                4 => Some(progress_window(&parent, "Restoring", token.clone())),
-                5 => Some(progress_window(&parent, "Previewing backup", token.clone())),
-                _ => None,
-            };
+            let progress_ui = operation
+                .progress_title()
+                .map(|title| progress_window(&parent, title, token.clone()));
             let repository = Repository {
                 location: repo.text().to_string(),
             };
-            let source = source.text().to_string();
+            let profile = backup_profile(
+                loaded_profile.borrow().as_ref(),
+                &repository.location,
+                &source.text(),
+            );
             let secret = password.text().to_string();
             password.set_text("");
             let id = snapshot.text().to_string();
@@ -837,79 +893,63 @@ fn build(app: &adw::Application) {
             status.set_text(if progress_ui.is_some() { "" } else { "Working…" });
             std::thread::spawn(move || {
                 let engine = Engine::default();
-                let result = (|| -> anyhow::Result<(String, Vec<Snapshot>, Option<Outcome>)> {
-                    if operation == 1 {
-                        return Ok((
-                            "Snapshots loaded".into(),
-                            engine.snapshots(&repository, &secret)?,
-                            None,
-                        ));
+                let sender = &tx;
+                let progress = |restoring: bool| {
+                    move |event: Event| {
+                        if let Event::Json(value) = event
+                            && let Some((message, fraction)) = progress_status(&value, restoring)
+                        {
+                            let _ = sender.try_send(OperationUpdate::Progress(message, fraction));
+                        }
                     }
+                };
+                let result = (|| -> anyhow::Result<(String, Vec<Snapshot>, Option<Outcome>)> {
+                    let mut activity_problem = None;
                     let result = match operation {
-                        0 => engine.init(&repository, &secret)?,
-                        2 => {
-                            let profile = Profile {
-                                id: "manual".into(),
-                                name: "Manual backup".into(),
-                                repository,
-                                sources: vec![source.into()],
-                                excludes: vec![],
-                                one_file_system: false,
-                            };
-                            engine.backup(&profile, &secret, token, |event| {
-                                if let Event::Json(value) = event
-                                    && let Some((message, fraction)) = progress_status(&value, false)
-                                {
-                                    let _ = tx.try_send(OperationUpdate::Progress(message, fraction));
-                                }
-                            })?
+                        Operation::Snapshots => {
+                            return Ok((
+                                "Snapshots loaded".into(),
+                                engine.snapshots(&repository, &secret)?,
+                                None,
+                            ));
                         }
-                        3 => engine.run(&repository, &secret, &["check".into()], token, |_| {})?,
-                        5 => {
-                            let profile = Profile {
-                                id: "manual".into(),
-                                name: "Manual backup preview".into(),
-                                repository,
-                                sources: vec![source.into()],
-                                excludes: vec![],
-                                one_file_system: false,
-                            };
-                            engine.preview_backup(&profile, &secret, token, |event| {
-                                if let Event::Json(value) = event
-                                    && let Some((message, fraction)) = progress_status(&value, false)
-                                {
-                                    let _ = tx.try_send(OperationUpdate::Progress(message, fraction));
-                                }
-                            })?
+                        Operation::Init => engine.init(&repository, &secret)?,
+                        Operation::Check => engine.check(&repository, &secret, token, |_| {})?,
+                        Operation::Backup => {
+                            let result = engine.backup(&profile, &secret, token, progress(false))?;
+                            if let Err(error) = restic_core::state_dir()
+                                .and_then(|state| restic_core::record(&state, &profile.id, &result))
+                            {
+                                activity_problem = Some(format!("Activity history was not updated: {error:#}"));
+                            }
+                            result
                         }
-                        _ => engine.restore_new_with_progress(
+                        Operation::Preview => {
+                            engine.preview_backup(&profile, &secret, token, progress(false))?
+                        }
+                        Operation::Restore => engine.restore_new_with_progress(
                             &repository,
                             &secret,
                             &id,
                             &selected,
                             std::path::Path::new(&target),
                             token,
-                            |event| {
-                                if let Event::Json(value) = event
-                                    && let Some((message, fraction)) = progress_status(&value, true)
-                                {
-                                    let _ = tx.try_send(OperationUpdate::Progress(message, fraction));
-                                }
-                            },
+                            progress(true),
                         )?,
                     };
                     let outcome = result.outcome.clone();
-                    let mut message = if operation == 5 {
-                        format!("Preview: {:?} • {:.1} seconds • no snapshot created", result.outcome, result.elapsed_seconds)
-                    } else {
-                        format!("Outcome: {:?} • {:.1} seconds", result.outcome, result.elapsed_seconds)
+                    let (seconds, name) = (result.elapsed_seconds, &profile.name);
+                    let mut message = match operation {
+                        Operation::Preview => format!("{name} preview: {outcome:?} • {seconds:.1} seconds • no snapshot created"),
+                        Operation::Backup => format!("{name}: {outcome:?} • {seconds:.1} seconds"),
+                        _ => format!("Outcome: {outcome:?} • {seconds:.1} seconds"),
                     };
-                    if !result.errors.is_empty() {
+                    for line in result.errors.iter().chain(&activity_problem) {
                         message.push('\n');
-                        message.push_str(&result.errors.join("\n"));
+                        message.push_str(line);
                     }
                     if outcome == Outcome::Cancelled {
-                        message.push_str(if operation == 4 {
+                        message.push_str(if operation == Operation::Restore {
                             "\nRestore stopped; no destination was published."
                         } else {
                             "\nBackup stopped; refresh snapshots to check whether Restic created one before stopping."
@@ -1010,9 +1050,6 @@ fn build(app: &adw::Application) {
     }
     window.present();
 }
-unsafe fn libc_geteuid() -> u32 {
-    unsafe { libc::geteuid() }
-}
 
 #[cfg(test)]
 mod tests {
@@ -1031,6 +1068,34 @@ mod tests {
         assert!(super::source_repository_overlap(repo, repo));
         assert!(super::source_repository_overlap("/", "/"));
         Ok(())
+    }
+    #[test]
+    fn backup_uses_the_loaded_profile_until_its_fields_are_edited() {
+        let saved = restic_core::Profile {
+            id: "documents".into(),
+            name: "Documents".into(),
+            repository: restic_core::Repository {
+                location: "/media/drive/repo".into(),
+            },
+            sources: vec!["/home/me/docs".into(), "/home/me/photos".into()],
+            excludes: vec!["*.tmp".into()],
+            one_file_system: true,
+        };
+        let used = super::backup_profile(Some(&saved), "/media/drive/repo", "/home/me/docs");
+        assert_eq!(used.id, "documents");
+        assert_eq!(used.sources.len(), 2);
+        assert_eq!(used.excludes, ["*.tmp"]);
+        assert!(used.one_file_system);
+        for (repository, source) in [
+            ("/media/drive/repo", "/home/me/music"),
+            ("/media/other/repo", "/home/me/docs"),
+        ] {
+            let manual = super::backup_profile(Some(&saved), repository, source);
+            assert_eq!(manual.id, "manual");
+            assert!(manual.excludes.is_empty() && !manual.one_file_system);
+            assert_eq!(manual.sources, [std::path::PathBuf::from(source)]);
+        }
+        assert_eq!(super::backup_profile(None, "/r", "/s").id, "manual");
     }
     #[test]
     fn profile_ids_are_file_safe() {

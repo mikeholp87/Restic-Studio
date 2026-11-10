@@ -1,15 +1,27 @@
 #!/bin/sh
 set -eu
 
-version=0.1.0-13
+# Debian revision of the upstream version in Cargo.toml; reset to 1 when that changes.
+revision=14
 
 project_root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
+upstream=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$project_root/Cargo.toml" | head -n 1)
+test -n "$upstream" || {
+	echo 'No [workspace.package] version found in Cargo.toml.' >&2
+	exit 1
+}
+version="$upstream-$revision"
+if [ "${1-}" = --print-version ]; then
+	echo "$version"
+	exit 0
+fi
+
 stage=$(mktemp -d)
 trap 'rm -rf -- "$stage"' EXIT
 chmod 0755 "$stage"
 
 runner="$project_root/target/release/restic-studio"
-gui="$project_root/crates/restic-gui/target/release/restic-studio-gui"
+gui="$project_root/target/release/restic-studio-gui"
 test -x "$runner" && test -x "$gui" || {
 	echo 'Build both release executables before packaging.' >&2
 	exit 1
