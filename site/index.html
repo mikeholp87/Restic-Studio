@@ -3,30 +3,108 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#edeff5" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#edeff5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f1117" media="(prefers-color-scheme: dark)" />
+    <title>Restic Studio: Restic backups without the command line</title>
     <meta
       name="description"
-      content="Restic Studio is a native GTK4 backup and restore manager for Linux, powered by Restic. Install the latest release from the signed APT repository."
+      content="Restic Studio is a free, open source GTK 4 app for Linux that backs up folders to encrypted Restic repositories, including external drives, then browses and restores snapshots. Install from a signed APT repository."
     />
-    <title>Restic Studio — Restic backups, made visual</title>
+    <link rel="canonical" href="https://mikeholp87.github.io/Restic-Studio/" />
     <link rel="icon" href="./restic-studio-icon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Restic Studio" />
+    <meta property="og:title" content="Restic Studio: Restic backups without the command line" />
+    <meta
+      property="og:description"
+      content="Back up folders to encrypted Restic repositories on external drives, then browse and restore snapshots. Free, open source, local only."
+    />
+    <meta property="og:url" content="https://mikeholp87.github.io/Restic-Studio/" />
+    <meta property="og:image" content="https://mikeholp87.github.io/Restic-Studio/assets/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Restic Studio in the dark theme with a saved Documents profile loaded on the Backup tab"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Restic Studio: Restic backups without the command line" />
+    <meta
+      name="twitter:description"
+      content="Back up folders to encrypted Restic repositories on external drives, then browse and restore snapshots. Free, open source, local only."
+    />
+    <meta name="twitter:image" content="https://mikeholp87.github.io/Restic-Studio/assets/og.png" />
+    <meta
+      name="twitter:image:alt"
+      content="Restic Studio in the dark theme with a saved Documents profile loaded on the Backup tab"
+    />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Restic Studio",
+        "description": "A native GTK 4 backup and restore app for Linux, powered by Restic, for local and external-drive repositories.",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Debian sid",
+        "url": "https://mikeholp87.github.io/Restic-Studio/",
+        "downloadUrl": "https://github.com/mikeholp87/Restic-Studio/releases/latest",
+        "license": "https://github.com/mikeholp87/Restic-Studio/blob/main/LICENSE",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "author": { "@type": "Person", "name": "Mike Holp" }
+      }
+    </script>
     <style>
       :root {
-        color-scheme: light;
+        color-scheme: light dark;
         --bg: #edeff5;
         --paper: #fff;
+        --soft: #f6f7fb;
         --ink: #14161f;
         --muted: #4b5167;
         --line: #d9ddea;
         --blue: #4350e0;
-        --green: #087b57;
-        --purple: #7442d1;
-        --teal: #0a7c94;
-        font-family: Inter, "Segoe UI", system-ui, sans-serif;
+        --blue-ink: #3641c4;
+        --on-blue: #fff;
+        --green: #066a4a;
+        --amber: #8a5a00;
+        --code-bg: #171a26;
+        --code-ink: #e8eaf4;
+        --shadow: 0 24px 60px -28px rgba(20, 22, 31, 0.35);
+        font-family:
+          Inter,
+          "Segoe UI",
+          system-ui,
+          -apple-system,
+          sans-serif;
         color: var(--ink);
         background: var(--bg);
         font-synthesis: none;
         text-rendering: optimizeLegibility;
+        scroll-behavior: smooth;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f1117;
+          --paper: #171a23;
+          --soft: #1b1f2a;
+          --ink: #eef0f7;
+          --muted: #a9afc4;
+          --line: #2a2f3d;
+          --blue: #8b95ff;
+          --blue-ink: #a3abff;
+          --on-blue: #0f1117;
+          --green: #4cd3a1;
+          --amber: #f2c46d;
+          --code-bg: #0a0c12;
+          --shadow: 0 24px 60px -28px rgba(0, 0, 0, 0.8);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        :root {
+          scroll-behavior: auto;
+        }
       }
       * {
         box-sizing: border-box;
@@ -36,12 +114,39 @@
         min-width: 320px;
       }
       a {
-        color: var(--blue);
+        color: var(--blue-ink);
         text-underline-offset: 0.2em;
       }
-      a:focus-visible {
+      a:focus-visible,
+      button:focus-visible,
+      summary:focus-visible {
         outline: 3px solid var(--blue);
         outline-offset: 3px;
+        border-radius: 4px;
+      }
+      .skip {
+        position: absolute;
+        left: 12px;
+        top: -60px;
+        z-index: 10;
+        padding: 10px 14px;
+        border-radius: 8px;
+        background: var(--blue);
+        color: var(--on-blue);
+        font-weight: 700;
+        text-decoration: none;
+      }
+      .skip:focus {
+        top: 12px;
+      }
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
       }
       .wrap {
         width: min(1080px, calc(100% - 40px));
@@ -59,58 +164,72 @@
         align-items: center;
         gap: 12px;
         color: var(--ink);
-        font-size: 19px;
-        font-weight: 700;
-        letter-spacing: -0.04em;
+        font-size: 20px;
+        font-weight: 750;
+        letter-spacing: -0.03em;
         text-decoration: none;
       }
       .brand img {
-        width: 38px;
-        height: 38px;
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
       }
       .nav {
         display: flex;
-        gap: 24px;
-        color: var(--muted);
+        align-items: center;
+        gap: 22px;
         font-size: 14px;
+        font-weight: 600;
       }
       .nav a {
-        color: inherit;
+        color: var(--ink);
+        text-decoration: none;
+      }
+      .nav a:hover {
+        color: var(--blue-ink);
+        text-decoration: underline;
+      }
+      .nav .pill {
+        padding: 8px 14px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--paper);
       }
       main {
-        padding: 58px 0 72px;
+        padding-top: 56px;
       }
       .hero {
         display: grid;
-        grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
-        gap: 60px;
+        grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+        gap: 56px;
         align-items: center;
-        padding: 28px 0 68px;
+        padding: 24px 0 72px;
       }
       .eyebrow {
-        display: flex;
+        display: inline-flex;
         align-items: center;
-        gap: 9px;
+        gap: 8px;
+        margin-bottom: 18px;
         color: var(--green);
         font-size: 13px;
-        font-weight: 650;
+        font-weight: 750;
       }
       .eyebrow::before {
+        content: "";
         width: 8px;
         height: 8px;
         border-radius: 50%;
         background: currentColor;
-        content: "";
       }
       h1 {
-        max-width: 600px;
-        margin: 19px 0 18px;
-        font-size: clamp(42px, 6vw, 68px);
-        line-height: 0.99;
-        letter-spacing: -0.065em;
+        margin: 0;
+        font-size: clamp(40px, 5.6vw, 68px);
+        line-height: 1;
+        letter-spacing: -0.055em;
       }
       .lead {
-        max-width: 510px;
+        max-width: 34em;
+        margin: 22px 0 0;
         color: var(--muted);
         font-size: 18px;
         line-height: 1.65;
@@ -118,162 +237,328 @@
       .actions {
         display: flex;
         flex-wrap: wrap;
-        align-items: center;
         gap: 12px;
-        margin-top: 27px;
+        margin-top: 28px;
       }
       .button {
         display: inline-flex;
-        min-height: 46px;
         align-items: center;
-        justify-content: center;
-        padding: 0 18px;
+        min-height: 46px;
+        padding: 0 20px;
         border: 1px solid var(--blue);
-        border-radius: 7px;
+        border-radius: 8px;
         background: var(--blue);
-        color: #fff;
-        font-size: 14px;
-        font-weight: 650;
+        color: var(--on-blue);
+        font-size: 15px;
+        font-weight: 750;
         text-decoration: none;
       }
+      .button:hover {
+        filter: brightness(1.08);
+      }
       .button.secondary {
-        background: transparent;
-        color: var(--ink);
         border-color: var(--line);
-      }
-      .scope {
-        margin-top: 22px;
-        color: var(--muted);
-        font-size: 13px;
-      }
-      .scope strong {
-        color: var(--ink);
-        font-weight: 600;
-      }
-      .panel {
-        overflow: hidden;
-        padding: 22px;
-        border: 1px solid #d8dced;
-        border-radius: 12px;
         background: var(--paper);
-        box-shadow: 0 18px 45px #22284a12;
+        color: var(--ink);
       }
-      .panel-head {
+      .badges {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding-bottom: 16px;
-        border-bottom: 1px solid var(--line);
-        font-size: 13px;
-        font-weight: 650;
-      }
-      .tag {
-        color: var(--green);
-        font-size: 12px;
-        font-weight: 600;
-      }
-      .steps {
-        margin: 0;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 26px 0 0;
         padding: 0;
         list-style: none;
       }
-      .steps li {
-        display: grid;
-        grid-template-columns: 4px 1fr;
-        gap: 14px;
-        padding: 15px 0;
-        border-bottom: 1px solid var(--line);
+      .badges li {
+        padding: 5px 11px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--paper);
         color: var(--muted);
-        font-size: 13px;
-        line-height: 1.5;
+        font-size: 12.5px;
+        font-weight: 650;
       }
-      .steps li:last-child {
-        border-bottom: 0;
-        padding-bottom: 0;
+      .badges .preview {
+        color: var(--amber);
       }
-      .steps li::before {
-        border-radius: 2px;
-        background: var(--tone);
-        content: "";
+      .shot {
+        margin: 0;
       }
-      .steps b {
+      .shot img {
         display: block;
-        color: var(--ink);
-        font-size: 14px;
+        width: 100%;
+        height: auto;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--paper);
+        box-shadow: var(--shadow);
       }
-      .install {
+      .shot figcaption {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+      section {
+        scroll-margin-top: 24px;
+      }
+      .section-head {
+        max-width: 640px;
+        margin-bottom: 32px;
+      }
+      h2 {
+        margin: 0;
+        font-size: clamp(26px, 3.2vw, 36px);
+        letter-spacing: -0.04em;
+        line-height: 1.1;
+      }
+      .section-head p {
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.65;
+      }
+      .features,
+      .shots,
+      .platforms,
+      .faq,
+      .safety {
+        padding: 72px 0 0;
+      }
+      .grid {
         display: grid;
-        grid-template-columns: minmax(220px, 0.68fr) minmax(0, 1.32fr);
-        gap: 48px;
-        padding: 42px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+      }
+      .card {
+        padding: 22px;
         border: 1px solid var(--line);
         border-radius: 12px;
         background: var(--paper);
       }
-      h2 {
-        margin: 0 0 12px;
-        font-size: 28px;
-        letter-spacing: -0.045em;
-      }
-      .install > * {
-        min-width: 0;
-      }
-      .install-copy p,
-      .fine {
-        color: var(--muted);
-        font-size: 14px;
-        line-height: 1.65;
-      }
-      .install-copy p {
-        margin: 0 0 16px;
-      }
-      .code {
-        overflow-x: auto;
-        margin: 0;
-        padding: 22px;
-        border-radius: 8px;
-        background: #171b2b;
-        color: #f2f3fa;
-        font:
-          12px/1.8 ui-monospace,
-          SFMono-Regular,
-          Consolas,
-          monospace;
-        tab-size: 2;
-      }
-      .fine {
-        margin: 14px 0 0;
-        font-size: 12px;
-      }
-      .details {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 28px;
-        padding: 54px 0 0;
-      }
-      .detail {
-        padding-top: 16px;
-        border-top: 1px solid var(--line);
-      }
-      .detail h3 {
+      .card h3 {
         margin: 0 0 8px;
         font-size: 16px;
         letter-spacing: -0.02em;
       }
-      .detail p {
+      .card p {
         margin: 0;
         color: var(--muted);
         font-size: 14px;
         line-height: 1.6;
       }
-      footer {
-        display: flex;
-        justify-content: space-between;
-        gap: 20px;
-        padding: 20px 0 28px;
-        border-top: 1px solid var(--line);
+      .card .tag {
+        display: inline-block;
+        margin-top: 12px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--soft);
+        color: var(--muted);
+        font-size: 11.5px;
+        font-weight: 700;
+      }
+      .shots-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 24px;
+      }
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--paper);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th,
+      td {
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
         color: var(--muted);
         font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      tr:last-child td {
+        border-bottom: 0;
+      }
+      td {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+      td:first-child {
+        color: var(--ink);
+        font-weight: 650;
+      }
+      .install {
+        margin-top: 72px;
+        padding: 40px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--paper);
+      }
+      .install > .section-head {
+        margin-bottom: 24px;
+      }
+      .steps {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 22px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        counter-reset: step;
+      }
+      .steps > li {
+        position: relative;
+        padding-left: 46px;
+        counter-increment: step;
+      }
+      .steps > li::before {
+        content: counter(step);
+        position: absolute;
+        left: 0;
+        top: -2px;
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: var(--blue);
+        color: var(--on-blue);
+        font-size: 14px;
+        font-weight: 800;
+      }
+      .steps h3 {
+        margin: 0 0 6px;
+        font-size: 16px;
+        letter-spacing: -0.02em;
+      }
+      .steps p {
+        margin: 0 0 10px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      .fp {
+        display: block;
+        margin: 0 0 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--soft);
+        color: var(--ink);
+        font:
+          600 13px/1.5 ui-monospace,
+          "SFMono-Regular",
+          Menlo,
+          Consolas,
+          monospace;
+        overflow-wrap: anywhere;
+      }
+      .codebox {
+        position: relative;
+      }
+      .code {
+        margin: 0;
+        padding: 20px 76px 20px 20px;
+        overflow-x: auto;
+        border-radius: 10px;
+        background: var(--code-bg);
+        color: var(--code-ink);
+        font:
+          13px/1.7 ui-monospace,
+          "SFMono-Regular",
+          Menlo,
+          Consolas,
+          monospace;
+        tab-size: 2;
+      }
+      .copy {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        min-height: 32px;
+        padding: 0 12px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #e8eaf4;
+        font: 700 12px/1 inherit;
+        cursor: pointer;
+      }
+      .copy:hover {
+        background: rgba(255, 255, 255, 0.16);
+      }
+      .fine {
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .fine code,
+      .steps p code,
+      .card p code,
+      details p code {
+        font:
+          12.5px ui-monospace,
+          "SFMono-Regular",
+          Menlo,
+          Consolas,
+          monospace;
+      }
+      .safety-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+      details {
+        border-bottom: 1px solid var(--line);
+      }
+      details:first-of-type {
+        border-top: 1px solid var(--line);
+      }
+      summary {
+        padding: 18px 4px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      details p {
+        max-width: 70ch;
+        margin: 0 0 18px;
+        padding: 0 4px;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.7;
+      }
+      footer {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 12px 24px;
+        margin-top: 80px;
+        padding: 24px 0 36px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 13px;
+      }
+      footer nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 20px;
+      }
+      @media (max-width: 960px) {
+        .grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
       }
       @media (max-width: 760px) {
         .wrap {
@@ -284,157 +569,435 @@
         }
         .nav {
           gap: 14px;
-          font-size: 12px;
+          font-size: 13px;
         }
-        main {
-          padding-top: 35px;
-        }
-        .hero,
-        .install {
-          grid-template-columns: 1fr;
-          gap: 28px;
-        }
-        .hero {
-          padding: 18px 0 44px;
-        }
-                .install {
-          padding: 25px 20px;
-        }
-        .details {
-          grid-template-columns: 1fr;
-          gap: 22px;
-          padding-top: 40px;
-        }
-      }
-      @media (max-width: 420px) {
-        .nav {
-          gap: 10px;
-        }
-        .nav a:first-child {
+        .nav .hide-sm {
           display: none;
         }
-        .code {
-          font-size: 11px;
+        main {
+          padding-top: 32px;
         }
-        footer {
-          flex-direction: column;
+        .hero {
+          grid-template-columns: 1fr;
+          gap: 32px;
+          padding: 12px 0 48px;
+        }
+        .features,
+        .shots,
+        .platforms,
+        .faq,
+        .safety {
+          padding-top: 52px;
+        }
+        .grid,
+        .shots-grid,
+        .safety-grid {
+          grid-template-columns: 1fr;
+        }
+        .install {
+          margin-top: 52px;
+          padding: 24px 18px;
+        }
+        .steps > li {
+          padding-left: 0;
+          padding-top: 40px;
+        }
+        .steps > li::before {
+          top: 0;
+        }
+        .code {
+          font-size: 12px;
         }
       }
     </style>
   </head>
   <body>
+    <a class="skip" href="#content">Skip to content</a>
     <div class="wrap">
       <header>
         <a class="brand" href="./" aria-label="Restic Studio home"
-          ><img src="./restic-studio-icon.svg" alt="" />Restic Studio</a
+          ><img src="./restic-studio-icon.svg" alt="" width="36" height="36" />Restic Studio</a
         >
         <nav class="nav" aria-label="Main navigation">
+          <a class="hide-sm" href="#features">Features</a>
+          <a class="hide-sm" href="#screenshots">Screenshots</a>
           <a href="#install">Install</a>
-          <a href="https://github.com/mikeholp87/Restic-Studio/releases/latest">Releases</a>
-          <a href="https://github.com/mikeholp87/Restic-Studio">Source</a>
+          <a class="hide-sm" href="#faq">FAQ</a>
+          <a class="pill" href="https://github.com/mikeholp87/Restic-Studio">GitHub</a>
         </nav>
       </header>
-      <main>
+      <main id="content">
         <section class="hero" aria-labelledby="hero-title">
           <div>
-            <div class="eyebrow">Early development preview</div>
+            <div class="eyebrow">Free and open source backup app for Linux</div>
             <h1 id="hero-title">Restic backups, without the command line.</h1>
             <p class="lead">
-              Restic Studio is a native Linux app for backing up a folder to an encrypted Restic
-              repository, including one on a mounted external drive, then browsing and restoring
-              what you saved.
+              Restic Studio is a native Linux app that backs up your folders to an encrypted Restic
+              repository, including one on an external drive, then lets you browse every snapshot
+              and restore what you need into a fresh folder.
             </p>
             <div class="actions">
-              <a class="button" href="#install">Install Restic Studio</a>
+              <a class="button" href="#install">Install on Linux</a>
               <a
                 class="button secondary"
                 href="https://github.com/mikeholp87/Restic-Studio/releases/latest"
-                >View latest release</a
+                >Latest release</a
               >
             </div>
-            <p class="scope">
-              <strong>Linux · amd64</strong> &nbsp; Debian sid (forky/sid). Local repositories only.
+            <ul class="badges" aria-label="Highlights">
+              <li>MIT licensed</li>
+              <li>Encrypted by Restic</li>
+              <li>Works offline</li>
+              <li>Rust, GTK 4 and libadwaita</li>
+              <li class="preview">Development preview</li>
+            </ul>
+          </div>
+          <figure class="shot">
+            <picture>
+              <source
+                type="image/webp"
+                srcset="
+                  ./assets/backup-dark-640.webp   640w,
+                  ./assets/backup-dark-1280.webp 1280w
+                "
+                sizes="(max-width: 760px) calc(100vw - 32px), 580px"
+              />
+              <img
+                src="./assets/backup-dark-1280.webp"
+                width="1280"
+                height="860"
+                fetchpriority="high"
+                alt="Restic Studio in the dark theme: the Documents profile is loaded with its repository on an external drive, a masked password and the Back Up Now button"
+              />
+            </picture>
+            <figcaption>The Backup tab with a saved profile, shown with sample data.</figcaption>
+          </figure>
+        </section>
+
+        <section id="features" class="features" aria-labelledby="features-title">
+          <div class="section-head">
+            <h2 id="features-title">Everything you need to back up and get it back</h2>
+            <p>
+              Restic Studio wraps the Restic you already trust in a calm desktop app, and never
+              takes a destructive step on your behalf.
             </p>
           </div>
-          <div class="panel">
-            <div class="panel-head">
-              <span>From folder to snapshot</span><span class="tag">GTK4 · libadwaita</span>
-            </div>
-            <ol class="steps">
-              <li style="--tone: var(--blue)">
-                <span><b>Preview</b>Dry run shows what would be backed up. Nothing is uploaded.</span>
-              </li>
-              <li style="--tone: var(--green)">
-                <span><b>Back up</b>Progress popup with Restic's file and byte counts.</span>
-              </li>
-              <li style="--tone: var(--purple)">
-                <span><b>Browse</b>List snapshots and walk their directories.</span>
-              </li>
-              <li style="--tone: var(--teal)">
-                <span><b>Restore &amp; check</b>Restore into a new folder, then verify the repository.</span>
-              </li>
-            </ol>
+          <div class="grid">
+            <article class="card">
+              <h3>Back up in one click</h3>
+              <p>
+                Pick a folder and a repository, then choose Back Up Now. A progress window shows
+                Restic's file and byte counts as it works.
+              </p>
+            </article>
+            <article class="card">
+              <h3>Preview first</h3>
+              <p>
+                A dry run shows what a backup would include without uploading anything or creating
+                a snapshot.
+              </p>
+              <span class="tag">restic backup --dry-run</span>
+            </article>
+            <article class="card">
+              <h3>Saved profiles</h3>
+              <p>
+                Save a repository, sources, exclusions and options under a name and load them in one
+                click. Passwords are never saved.
+              </p>
+            </article>
+            <article class="card">
+              <h3>External drives</h3>
+              <p>
+                Choose a folder on a mounted drive. Restic Studio refuses to write to the system disk
+                when the drive is missing.
+              </p>
+            </article>
+            <article class="card">
+              <h3>Browse snapshots</h3>
+              <p>
+                List every snapshot in a repository and walk its folders to find the file or
+                directory you want back.
+              </p>
+            </article>
+            <article class="card">
+              <h3>Restore safely</h3>
+              <p>
+                Restores are verified, staged privately and published into a new folder, so nothing
+                you already have is overwritten.
+              </p>
+            </article>
+            <article class="card">
+              <h3>Check your repository</h3>
+              <p>
+                Run Restic's structure check from the app, because a finished backup alone does not
+                prove the repository is healthy.
+              </p>
+            </article>
+            <article class="card">
+              <h3>Headless runner</h3>
+              <p>
+                The <code>restic-studio</code> command runs the same backups, checks and restores
+                from scripts, with the password on standard input.
+              </p>
+              <span class="tag">Command line</span>
+            </article>
           </div>
         </section>
+
+        <section id="screenshots" class="shots" aria-labelledby="shots-title">
+          <div class="section-head">
+            <h2 id="shots-title">Light and dark themes</h2>
+            <p>Follow your system theme, or pick one from the header.</p>
+          </div>
+          <div class="shots-grid">
+            <figure class="shot">
+              <picture>
+                <source
+                  type="image/webp"
+                  srcset="
+                    ./assets/backup-dark-640.webp   640w,
+                    ./assets/backup-dark-1280.webp 1280w
+                  "
+                  sizes="(max-width: 760px) calc(100vw - 32px), 528px"
+                />
+                <img
+                  src="./assets/backup-dark-640.webp"
+                  width="640"
+                  height="430"
+                  loading="lazy"
+                  alt="Restic Studio Backup tab in the dark theme"
+                />
+              </picture>
+              <figcaption>Backup, dark theme (sample data).</figcaption>
+            </figure>
+            <figure class="shot">
+              <picture>
+                <source
+                  type="image/webp"
+                  srcset="
+                    ./assets/restore-light-640.webp   640w,
+                    ./assets/restore-light-1280.webp 1280w
+                  "
+                  sizes="(max-width: 760px) calc(100vw - 32px), 528px"
+                />
+                <img
+                  src="./assets/restore-light-640.webp"
+                  width="640"
+                  height="430"
+                  loading="lazy"
+                  alt="Restic Studio Restore tab in the light theme listing four snapshots with one selected"
+                />
+              </picture>
+              <figcaption>Restore, light theme (sample data).</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section id="platforms" class="platforms" aria-labelledby="platforms-title">
+          <div class="section-head">
+            <h2 id="platforms-title">Supported platforms</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Platform</th>
+                  <th scope="col">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Debian sid (forky/sid), amd64</td>
+                  <td>
+                    Signed APT repository below. Needs Restic 0.19, GTK 4.24, libadwaita 1.10 and
+                    glibc 2.43 or newer.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Debian 13 and Ubuntu</td>
+                  <td>Not yet. Their GTK, libadwaita and glibc versions are too old for this build.</td>
+                </tr>
+                <tr>
+                  <td>Repositories</td>
+                  <td>
+                    Local folders and mounted external drives. Cloud and network repositories such as
+                    S3 or SFTP are not supported yet.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         <section id="install" class="install" aria-labelledby="install-title">
-          <div class="install-copy">
+          <div class="section-head">
             <h2 id="install-title">Install with APT</h2>
             <p>
-              Add the signed repository once. APT will keep Restic Studio updated with your system
-              packages.
-            </p>
-            <p>
-              The package needs Restic 0.19, GTK 4.24, libadwaita 1.10 and glibc 2.43 or newer, so it
-              installs on Debian sid, not Debian 13.
+              Add the signed repository once and APT keeps Restic Studio updated with your other
+              packages. Verify the signing key before you trust it.
             </p>
           </div>
-          <div>
-            <pre class="code"><code>sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://mikeholp87.github.io/apt/apt.asc \
-  | sudo tee /etc/apt/keyrings/mikeholp87-apt.asc &gt;/dev/null
+          <ol class="steps">
+            <li>
+              <h3>Install the prerequisites</h3>
+              <div class="codebox">
+                <pre class="code" tabindex="0"><code>sudo apt update
+sudo apt install ca-certificates curl gnupg</code></pre>
+              </div>
+            </li>
+            <li>
+              <h3>Download the key and check its fingerprint</h3>
+              <p>The fingerprint printed by <code>gpg</code> must be exactly this:</p>
+              <code class="fp">E4C2 92E5 08CB 8700 6F7C 904E 7F08 D91D 3A1D 8F76</code>
+              <div class="codebox">
+                <pre class="code" tabindex="0"><code>curl -fsSLo /tmp/mikeholp87-apt.asc https://mikeholp87.github.io/apt/apt.asc
+gpg --show-keys --with-fingerprint /tmp/mikeholp87-apt.asc</code></pre>
+              </div>
+            </li>
+            <li>
+              <h3>Add the repository</h3>
+              <div class="codebox">
+                <pre
+                  class="code"
+                  tabindex="0"
+                ><code>sudo install -D -m 0644 /tmp/mikeholp87-apt.asc /etc/apt/keyrings/mikeholp87-apt.asc
 echo "deb [signed-by=/etc/apt/keyrings/mikeholp87-apt.asc] https://mikeholp87.github.io/apt/ ./" \
-  | sudo tee /etc/apt/sources.list.d/mikeholp87-apt.list
-sudo apt update
+  | sudo tee /etc/apt/sources.list.d/mikeholp87-apt.list &gt;/dev/null</code></pre>
+              </div>
+            </li>
+            <li>
+              <h3>Install Restic Studio</h3>
+              <div class="codebox">
+                <pre class="code" tabindex="0"><code>sudo apt update
 sudo apt install restic-studio</code></pre>
-            <p class="fine">
-              Launch it from the application menu or run <code>restic-studio-gui</code>. To remove:
-              <code>sudo apt remove restic-studio</code>. Your repositories and snapshots are left
-              untouched.
-            </p>
+              </div>
+              <p class="fine">
+                Launch it from the application menu or run <code>restic-studio-gui</code>. Update
+                later with <code>sudo apt update &amp;&amp; sudo apt upgrade</code>. Remove with
+                <code>sudo apt remove restic-studio</code>; your repositories and snapshots are left
+                untouched. Prefer a single file? Download the <code>.deb</code> and its SHA-256
+                checksums from
+                <a href="https://github.com/mikeholp87/Restic-Studio/releases/latest"
+                  >GitHub Releases</a
+                >.
+              </p>
+            </li>
+          </ol>
+        </section>
+
+        <section id="safety" class="safety" aria-labelledby="safety-title">
+          <div class="section-head">
+            <h2 id="safety-title">Safe by design</h2>
+          </div>
+          <div class="safety-grid">
+            <article class="card">
+              <h3>Never overwrites</h3>
+              <p>
+                Restores always create a new folder. Restoring into <code>/</code>,
+                <code>/etc</code>, <code>/usr</code> or <code>/boot</code> is blocked.
+              </p>
+            </article>
+            <article class="card">
+              <h3>Knows your drive</h3>
+              <p>
+                Backups, restores and checks remember the repository and drive identity, and stop if
+                a different one appears at the same place.
+              </p>
+            </article>
+            <article class="card">
+              <h3>Your password stays with you</h3>
+              <p>
+                You enter the repository password for each operation. It is never written to disk,
+                and nothing leaves your machine.
+              </p>
+            </article>
           </div>
         </section>
-        <section class="details" aria-label="About Restic Studio">
-          <article class="detail">
-            <h3>Safe by default</h3>
+
+        <section id="faq" class="faq" aria-labelledby="faq-title">
+          <div class="section-head">
+            <h2 id="faq-title">Questions</h2>
+          </div>
+          <details>
+            <summary>Is Restic Studio ready for my only backup?</summary>
             <p>
-              Restores go into a new folder and never overwrite existing files. Restores into
-              <code>/</code>, <code>/etc</code>, <code>/usr</code> and <code>/boot</code> are
-              blocked.
+              Not yet. It is a development preview. Restic does the backing up, but the app has not
+              finished its recovery acceptance testing. Keep another backup, and practice restoring
+              a file to a new folder before you rely on it.
             </p>
-          </article>
-          <article class="detail">
-            <h3>Drive-aware</h3>
+          </details>
+          <details>
+            <summary>Where is my password stored?</summary>
             <p>
-              The app remembers the repository and drive identity and stops if an external drive
-              changes, instead of silently creating a new repository.
+              Nowhere. The app asks for it for each operation and passes it to Restic through a
+              private pipe. Saved profiles hold settings only. If you lose the password, Restic
+              cannot decrypt the repository, so keep it somewhere safe.
             </p>
-          </article>
-          <article class="detail">
-            <h3>Your password stays with you</h3>
+          </details>
+          <details>
+            <summary>What happens if I plug in a different drive?</summary>
             <p>
-              The repository password is entered for each operation and is never saved. A headless
-              <code>restic-studio</code> runner covers the same operations from scripts.
+              Restic Studio remembers each repository's ID and, when the system reports one, the
+              drive's hardware identifier. If they change, it stops instead of backing up to the
+              wrong place or creating a new repository on your system disk.
             </p>
-          </article>
+          </details>
+          <details>
+            <summary>Can I back up my whole system?</summary>
+            <p>
+              You can choose <code>/</code> as the source. The repository and virtual or temporary
+              folders such as <code>/proc</code>, <code>/tmp</code> and <code>/media</code> are
+              skipped automatically. The app runs as your user, so files you cannot read are
+              reported as a partial backup rather than hidden.
+            </p>
+          </details>
+          <details>
+            <summary>Where do I report a bug?</summary>
+            <p>
+              Open an issue on
+              <a href="https://github.com/mikeholp87/Restic-Studio/issues">GitHub</a>.
+            </p>
+          </details>
         </section>
       </main>
       <footer>
-        <span>Restic Studio is free and open source. Not yet a verified recovery solution.</span>
-        <span
-          ><a href="https://github.com/mikeholp87/Restic-Studio">GitHub project</a> ·
-          <a href="https://github.com/mikeholp87/Restic-Studio/releases/latest">Latest release</a></span
-        >
+        <span>Restic Studio is free and open source under the MIT license.</span>
+        <nav aria-label="Footer">
+          <a href="https://github.com/mikeholp87/Restic-Studio">GitHub</a>
+          <a href="https://github.com/mikeholp87/Restic-Studio/releases/latest">Releases</a>
+          <a href="https://github.com/mikeholp87/Restic-Studio/blob/main/LICENSE">License</a>
+          <a href="https://github.com/mikeholp87/Restic-Studio/blob/main/docs/installation.md"
+            >Installation</a
+          >
+          <a href="https://github.com/mikeholp87/Restic-Studio/blob/main/docs/verification.md"
+            >Verification</a
+          >
+        </nav>
       </footer>
     </div>
+    <p id="copy-status" class="visually-hidden" role="status" aria-live="polite"></p>
+    <script>
+      var copyStatus = document.getElementById("copy-status");
+      document.querySelectorAll(".codebox").forEach(function (box) {
+        var code = box.querySelector("code");
+        if (!code || !navigator.clipboard) return;
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "copy";
+        button.textContent = "Copy";
+        button.setAttribute("aria-label", "Copy commands to clipboard");
+        button.addEventListener("click", function () {
+          navigator.clipboard.writeText(code.textContent).then(function () {
+            button.textContent = "Copied";
+            copyStatus.textContent = "Commands copied to clipboard";
+            setTimeout(function () {
+              button.textContent = "Copy";
+              copyStatus.textContent = "";
+            }, 1800);
+          });
+        });
+        box.appendChild(button);
+      });
+    </script>
   </body>
 </html>
