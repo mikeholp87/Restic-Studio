@@ -1,5 +1,7 @@
 # Restic Studio
 
+[![Latest release](https://img.shields.io/github/v/release/mikeholp87/Restic-Studio)](https://github.com/mikeholp87/Restic-Studio/releases/latest) [![License: MIT](https://img.shields.io/github/license/mikeholp87/Restic-Studio)](LICENSE) [![Stars](https://img.shields.io/github/stars/mikeholp87/Restic-Studio?style=flat)](https://github.com/mikeholp87/Restic-Studio/stargazers) ![apt install restic-studio](https://img.shields.io/badge/apt%20install-restic--studio-A81D33?logo=debian&logoColor=white)
+
 Native GTK4 backup and restore manager for Linux, powered by the [Restic](https://restic.net/) CLI. Restic Studio is an **early development preview**, not a verified daily backup or full-system recovery solution.
 
 It provides a simple graphical path from a local folder to an encrypted Restic repository, including repositories on mounted external drives. The repository password is entered for each operation and is not saved by the app.
