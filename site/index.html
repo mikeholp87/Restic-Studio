@@ -6,10 +6,10 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#edeff5" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0f1117" media="(prefers-color-scheme: dark)" />
-    <title>Restic Studio: Restic backups without the command line</title>
+    <title>Restic Studio: A Restic GUI for Linux Backups</title>
     <meta
       name="description"
-      content="Restic Studio is a free Linux backup app for Restic: encrypted backups to local or external drives, snapshot browsing and safe restores. Early preview."
+      content="Restic Studio is a free Restic GUI for Linux: encrypted backups to local or external drives, snapshot browsing and safe restores. Early preview."
     />
     <link rel="canonical" href="https://mikeholp87.github.io/Restic-Studio/" />
     <link rel="icon" href="./restic-studio-icon.svg" type="image/svg+xml" />
@@ -646,7 +646,7 @@
             <div class="eyebrow">Free and open source backup app for Linux</div>
             <h1 id="hero-title">Restic backups, without the command line.</h1>
             <p class="lead">
-              Restic Studio is a native Linux app that backs up your folders to an encrypted Restic
+              Restic Studio is a native Restic GUI for Linux that backs up your folders to an encrypted Restic
               repository, including one on an external drive, then lets you browse every snapshot
               and restore what you need into a fresh folder.
             </p>
@@ -812,6 +812,26 @@
               </picture>
               <figcaption>Restore, light theme (sample data).</figcaption>
             </figure>
+          </div>
+        </section>
+
+        <section id="compare" class="features" aria-labelledby="compare-title">
+          <div class="section-head">
+            <h2 id="compare-title">How does Restic Studio compare with other Restic tools?</h2>
+            <p>Vorta and Pika Backup are desktop apps for BorgBackup, not Restic, so they do not open Restic repositories.</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th scope="col">Tool</th><th scope="col">Type</th><th scope="col">Good fit when</th></tr>
+              </thead>
+              <tbody>
+<tr><td>Restic Studio</td><td>Native GTK 4 desktop app</td><td>You want to back up, browse snapshots and restore from a desktop window, with restores into a new folder.</td></tr>
+<tr><td>Restic command line</td><td>Terminal program</td><td>You want every option, and you are comfortable scripting it.</td></tr>
+<tr><td>Backrest</td><td>Web interface for Restic</td><td>You want a web interface to manage Restic, for example on a server.</td></tr>
+<tr><td>Restic-Browser</td><td>Desktop app for browsing</td><td>You mainly want to browse and restore from an existing repository.</td></tr>
+              </tbody>
+            </table>
           </div>
         </section>
 
