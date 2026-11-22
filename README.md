@@ -136,3 +136,7 @@ docs/                   Architecture, installation, verification, roadmap
 ```
 
 The project uses the [MIT license](LICENSE).
+
+## Author
+
+Built by [Mike Holp](https://www.ai-automation-station.com/about.html) with AI coding tools. See the build video on [AI Automation Station](https://www.ai-automation-station.com/watch/V0PoYhOprBI), and more projects at [github.com/mikeholp87](https://github.com/mikeholp87).
