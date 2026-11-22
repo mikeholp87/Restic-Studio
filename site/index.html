@@ -9,7 +9,7 @@
     <title>Restic Studio: Restic backups without the command line</title>
     <meta
       name="description"
-      content="Restic Studio is a free, open source GTK 4 app for Linux that backs up folders to encrypted Restic repositories, including external drives, then browses and restores snapshots. Install from a signed APT repository."
+      content="Restic Studio is a free Linux backup app for Restic: encrypted backups to local or external drives, snapshot browsing and safe restores. Early preview."
     />
     <link rel="canonical" href="https://mikeholp87.github.io/Restic-Studio/" />
     <link rel="icon" href="./restic-studio-icon.svg" type="image/svg+xml" />
@@ -40,21 +40,35 @@
       content="Restic Studio in the dark theme with a saved Documents profile loaded on the Backup tab"
     />
     <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        "name": "Restic Studio",
-        "description": "A native GTK 4 backup and restore app for Linux, powered by Restic, for local and external-drive repositories.",
-        "applicationCategory": "UtilitiesApplication",
-        "operatingSystem": "Debian sid",
-        "url": "https://mikeholp87.github.io/Restic-Studio/",
-        "downloadUrl": "https://github.com/mikeholp87/Restic-Studio/releases/latest",
-        "license": "https://github.com/mikeholp87/Restic-Studio/blob/main/LICENSE",
-        "isAccessibleForFree": true,
-        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-        "author": { "@type": "Person", "name": "Mike Holp", "url": "https://www.ai-automation-station.com/about.html", "sameAs": ["https://github.com/mikeholp87", "https://www.ai-automation-station.com/"] }
-      }
-    </script>
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Restic Studio",
+  "description": "A native GTK 4 backup and restore app for Linux, powered by Restic, for local and external-drive repositories.",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Debian sid",
+  "url": "https://mikeholp87.github.io/Restic-Studio/",
+  "downloadUrl": "https://github.com/mikeholp87/Restic-Studio/releases/latest",
+  "license": "https://github.com/mikeholp87/Restic-Studio/blob/main/LICENSE",
+  "isAccessibleForFree": true,
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Mike Holp",
+    "url": "https://www.ai-automation-station.com/about.html",
+    "sameAs": [
+      "https://github.com/mikeholp87",
+      "https://www.ai-automation-station.com/"
+    ]
+  },
+  "softwareVersion": "0.1.0",
+  "dateModified": "2026-11-22"
+}
+</script>
     <style>
       :root {
         color-scheme: light dark;
@@ -673,6 +687,14 @@
             <figcaption>The Backup tab with a saved profile, shown with sample data.</figcaption>
           </figure>
         </section>
+<section id="what-is" class="features" aria-labelledby="what-is-title">
+<div class="section-head">
+<h2 id="what-is-title">What is Restic Studio?</h2>
+<p>Restic Studio is a free, open source, native GTK 4 backup and restore app for Linux, built on the Restic command line tool. It backs up your folders to an encrypted Restic repository, including one on a mounted external drive, and lets you browse every snapshot and restore files into a new folder so nothing you already have is overwritten. You can preview a backup with a dry run, save named profiles that never store your password, and run Restic&#x27;s repository check from the app. A headless restic-studio command runs the same backups, checks and restores from scripts. Repositories on local folders and external drives are supported; cloud and network repositories such as S3 or SFTP are not yet. The app is written in Rust with libadwaita, uses the MIT license, works offline and is an early development preview, so keep a second backup. It installs on Debian sid from a signed APT repository.</p>
+<p><small>Version 0.1.0 · Updated November 22, 2026</small></p>
+</div>
+</section>
+
 
         <section id="features" class="features" aria-labelledby="features-title">
           <div class="section-head">
