@@ -623,6 +623,17 @@
           font-size: 12px;
         }
       }
+    
+.sponsor-heart { color: #bf3989; }
+@media (prefers-color-scheme: dark) { .sponsor-heart { color: #db61a2; } }
+.pill.sponsor { display: inline-flex; align-items: center; gap: 6px; }
+.pill.sponsor:hover { border-color: #bf3989; }
+.support { margin: 72px 0 24px; padding: 36px 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); text-align: center; }
+.support h2 { margin: 0 0 10px; }
+.support p { max-width: 58ch; margin: 0 auto 22px; color: var(--muted); }
+.support p.small { margin: 16px auto 0; font-size: 14px; }
+.button.sponsor-cta { gap: 8px; }
+@media (max-width: 480px) { header { flex-wrap: wrap; row-gap: 10px; } .nav { flex-wrap: wrap; gap: 8px; } .nav .pill { padding: 7px 11px; } .nav a { font-size: 14px; } .support { padding: 28px 18px; } }
     </style>
   </head>
   <body>
@@ -638,6 +649,7 @@
           <a href="#install">Install</a>
           <a class="hide-sm" href="#faq">FAQ</a>
           <a class="pill" href="https://github.com/mikeholp87/Restic-Studio">GitHub</a>
+        <a class="pill sponsor" href="https://github.com/sponsors/mikeholp87"><span class="sponsor-heart" aria-hidden="true">♥</span> Sponsor</a>
         </nav>
       </header>
       <main id="content">
@@ -1002,11 +1014,19 @@ sudo apt install restic-studio</code></pre>
             </p>
           </details>
         </section>
+      
+      <section id="support" class="support" aria-labelledby="support-title">
+        <h2 id="support-title"><span class="sponsor-heart" aria-hidden="true">♥</span> Support Restic Studio</h2>
+        <p>Restic Studio is free and open source. If it saves you time, sponsoring helps me keep fixing bugs, answering issues and shipping updates. Every bit helps, and you can stop any time.</p>
+        <a class="button secondary sponsor-cta" href="https://github.com/sponsors/mikeholp87"><span class="sponsor-heart" aria-hidden="true">♥</span> Sponsor on GitHub</a>
+        <p class="small">Can't sponsor? A star on <a href="https://github.com/mikeholp87/Restic-Studio">GitHub</a> also helps other people find it.</p>
+      </section>
       </main>
       <footer>
         <span>Restic Studio is free and open source under the MIT license.</span>
         <nav aria-label="Footer">
           <a href="https://github.com/mikeholp87/Restic-Studio">GitHub</a>
+          <a href="https://github.com/sponsors/mikeholp87"><span class="sponsor-heart" aria-hidden="true">♥</span> Sponsor</a>
           <a href="https://github.com/mikeholp87/Restic-Studio/releases/latest">Releases</a>
           <a href="https://github.com/mikeholp87/Restic-Studio/blob/main/LICENSE">License</a>
           <a href="https://github.com/mikeholp87/Restic-Studio/blob/main/docs/installation.md"
