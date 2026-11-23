@@ -635,6 +635,7 @@
 .button.sponsor-cta { gap: 8px; }
 @media (max-width: 480px) { header { flex-wrap: wrap; row-gap: 10px; } .nav { flex-wrap: wrap; gap: 8px; } .nav .pill { padding: 7px 11px; } .nav a { font-size: 14px; } .support { padding: 28px 18px; } }
     </style>
+      <style>.hero{grid-template-columns:minmax(0,1fr)!important;gap:28px!important}.demo-frame{width:100%;margin:0}.demo-frame iframe{display:block;width:100%;border:1px solid rgba(128,128,128,.35);border-radius:12px;background:transparent;box-shadow:0 24px 60px -28px rgba(0,0,0,.45)}</style>
   </head>
   <body>
     <a class="skip" href="#content">Skip to content</a>
@@ -664,7 +665,6 @@
             </p>
             <div class="actions">
               <a class="button" href="#install">Install on Linux</a>
-<a class="button secondary" href="./demo/">Try the demo</a>
               <a
                 class="button secondary"
                 href="https://github.com/mikeholp87/Restic-Studio/releases/latest"
@@ -679,26 +679,7 @@
               <li class="preview">Development preview</li>
             </ul>
           </div>
-          <figure class="shot">
-            <picture>
-              <source
-                type="image/webp"
-                srcset="
-                  ./assets/backup-dark-640.webp   640w,
-                  ./assets/backup-dark-1280.webp 1280w
-                "
-                sizes="(max-width: 760px) calc(100vw - 32px), 580px"
-              />
-              <img
-                src="./assets/backup-dark-1280.webp"
-                width="1280"
-                height="860"
-                fetchpriority="high"
-                alt="Restic Studio in the dark theme: the Documents profile is loaded with its repository on an external drive, a masked password and the Back Up Now button"
-              />
-            </picture>
-            <figcaption>The Backup tab with a saved profile, shown with sample data.</figcaption>
-          </figure>
+          <div class="demo-frame"><iframe id="demo-frame" src="./embed/" title="Interactive Restic Studio demo with sample data" loading="lazy" height="720"></iframe></div>
         </section>
 <section id="what-is" class="features" aria-labelledby="what-is-title">
 <div class="section-head">
@@ -1149,5 +1130,6 @@ sudo apt install restic-studio</code></pre>
     dlg.addEventListener('close', () => { document.documentElement.classList.remove('lb-open'); view.removeAttribute('src'); opener?.focus(); });
   })();
 </script>
+      <script>(function(){var f=document.getElementById("demo-frame");if(!f||f.hasAttribute("data-fixed"))return;function fit(){try{f.style.height=f.contentDocument.body.offsetHeight+2+"px"}catch(e){}}f.addEventListener("load",function(){fit();try{new ResizeObserver(fit).observe(f.contentDocument.body)}catch(e){}})})();</script>
   </body>
 </html>
