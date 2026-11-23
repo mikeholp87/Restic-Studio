@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Try Restic Studio: Interactive Restic GUI Demo</title>
+    <meta
+      name="description"
+      content="Walk through a Restic backup in your browser: save a profile, back up a sample folder, browse snapshots and restore into a new folder. Sample data only."
+    />
+    <link rel="canonical" href="https://mikeholp87.github.io/Restic-Studio/demo/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Try Restic Studio in your browser" />
+    <meta property="og:url" content="https://mikeholp87.github.io/Restic-Studio/demo/" />
+    <meta property="og:image" content="https://mikeholp87.github.io/Restic-Studio/assets/og.png" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --page: #edeff5;
+        --ink: #14161f;
+        --muted: #4b5167;
+        --line: #d9ddea;
+        --blue: #4350e0;
+        --on-blue: #fff;
+        --warn-bg: #fff4d6;
+        --warn-ink: #5c4200;
+        font-family: Inter, "Segoe UI", system-ui, sans-serif;
+        background: var(--page);
+        color: var(--ink);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --page: #0f1117;
+          --ink: #eef0f7;
+          --muted: #a9afc4;
+          --line: #2a2f3d;
+          --blue: #8b95ff;
+          --on-blue: #0f1117;
+          --warn-bg: #2d2610;
+          --warn-ink: #f4d98a;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        line-height: 1.5;
+      }
+      a {
+        color: var(--blue);
+      }
+      .wrap {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 0 16px;
+      }
+      .top {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 20px;
+        justify-content: space-between;
+        align-items: center;
+        padding-block: 14px 6px;
+      }
+      .top nav {
+        display: flex;
+        gap: 16px;
+        font-size: 15px;
+      }
+      .notice {
+        padding: 10px 16px;
+        border-radius: 10px;
+        background: var(--warn-bg);
+        color: var(--warn-ink);
+        font-size: 14px;
+      }
+      h1 {
+        margin: 14px 0 4px;
+        font-size: clamp(24px, 3.5vw, 34px);
+        letter-spacing: -0.02em;
+      }
+      .lede {
+        margin: 0 0 14px;
+        color: var(--muted);
+      }
+      .steps {
+        margin: 0 0 14px;
+        padding-left: 20px;
+        color: var(--muted);
+        font-size: 14.5px;
+      }
+      code {
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 12.5px;
+        padding: 1px 5px;
+        border-radius: 5px;
+        border: 1px solid var(--line);
+      }
+
+      .win {
+        --w-bg: #242424;
+        --w-head: #303030;
+        --w-ink: #f2f2f2;
+        --w-dim: #a8a8a8;
+        --w-field: #1f1f1f;
+        --w-btn: #3c3c3c;
+        --w-btn-h: #4a4a4a;
+        --w-edge: #4a4a4a;
+        --w-accent: #3584e4;
+        --w-sel: #1a5fb4;
+        background: var(--w-bg);
+        color: var(--w-ink);
+        border: 1px solid var(--w-edge);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 30px 70px -30px rgba(0, 0, 0, 0.55);
+        font-size: 14px;
+      }
+      .win.light {
+        --w-bg: #fafafa;
+        --w-head: #ebebeb;
+        --w-ink: #1e1e1e;
+        --w-dim: #5e5e5e;
+        --w-field: #fff;
+        --w-btn: #ececec;
+        --w-btn-h: #e0e0e0;
+        --w-edge: #cfcfcf;
+        --w-accent: #1c71d8;
+        --w-sel: #3584e4;
+      }
+      .title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 14px;
+        background: var(--w-head);
+        border-bottom: 1px solid var(--w-edge);
+      }
+      .title strong {
+        flex: 1;
+        text-align: center;
+      }
+      .win select,
+      .win input[type="text"],
+      .win input[type="password"] {
+        width: 100%;
+        font: inherit;
+        color: inherit;
+        background: var(--w-field);
+        border: 1px solid var(--w-edge);
+        border-radius: 8px;
+        padding: 8px 10px;
+      }
+      .win select {
+        background: var(--w-btn);
+      }
+      .title select {
+        width: auto;
+      }
+      .win input:focus,
+      .win select:focus,
+      .win button:focus-visible {
+        outline: 2px solid var(--w-accent);
+        outline-offset: 1px;
+      }
+      .win button {
+        font: inherit;
+        color: inherit;
+        background: var(--w-btn);
+        border: 1px solid var(--w-edge);
+        border-radius: 8px;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+      .win button:hover {
+        background: var(--w-btn-h);
+      }
+      .win button.primary {
+        background: var(--w-sel);
+        border-color: var(--w-sel);
+        color: #fff;
+        font-weight: 650;
+      }
+      .win button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .statusline {
+        padding: 8px 16px 0;
+        color: var(--w-dim);
+        min-height: 30px;
+      }
+      .form {
+        padding: 6px 22px 22px;
+        display: grid;
+        gap: 8px;
+      }
+      .form h2 {
+        margin: 10px 0 0;
+        font-size: 28px;
+      }
+      .form p {
+        margin: 0;
+        color: var(--w-dim);
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 8px;
+      }
+      @media (max-width: 560px) {
+        .row {
+          grid-template-columns: 1fr;
+        }
+      }
+      label {
+        color: var(--w-ink);
+      }
+      .seg {
+        display: flex;
+        justify-self: center;
+      }
+      .seg button {
+        border-radius: 0;
+        min-width: 110px;
+      }
+      .seg button:first-child {
+        border-radius: 8px 0 0 8px;
+      }
+      .seg button:last-child {
+        border-radius: 0 8px 8px 0;
+      }
+      .seg button[aria-pressed="true"] {
+        background: var(--w-field);
+        font-weight: 650;
+      }
+      .pw {
+        position: relative;
+      }
+      .pw button {
+        position: absolute;
+        right: 4px;
+        top: 4px;
+        padding: 4px 8px;
+        border: 0;
+        background: transparent;
+      }
+      ul.snaps {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        border: 1px solid var(--w-edge);
+        border-radius: 8px;
+        background: var(--w-field);
+        max-height: 150px;
+        overflow: auto;
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 12.5px;
+      }
+      ul.snaps li {
+        padding: 5px 10px;
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      ul.snaps li[aria-selected="true"] {
+        background: var(--w-sel);
+        color: #fff;
+      }
+      pre.out {
+        margin: 0;
+        padding: 10px 12px;
+        border: 1px solid var(--w-edge);
+        border-radius: 8px;
+        background: var(--w-field);
+        font: 12.5px/1.5 ui-monospace, Menlo, monospace;
+        max-height: 170px;
+        overflow: auto;
+        white-space: pre-wrap;
+      }
+      .bar {
+        height: 10px;
+        border-radius: 5px;
+        background: var(--w-field);
+        border: 1px solid var(--w-edge);
+        overflow: hidden;
+      }
+      .bar i {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: var(--w-accent);
+      }
+      .hide {
+        display: none !important;
+      }
+      .cta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin: 18px 0 40px;
+      }
+      .cta a {
+        padding: 10px 18px;
+        border-radius: 10px;
+        font-weight: 650;
+        text-decoration: none;
+        background: var(--blue);
+        color: var(--on-blue);
+      }
+      .cta a.secondary {
+        background: transparent;
+        color: var(--blue);
+        border: 1px solid var(--blue);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <strong>Restic Studio</strong>
+        <nav aria-label="Demo navigation">
+          <a href="../">Overview</a>
+          <a href="../#install">Install</a>
+          <a href="https://github.com/mikeholp87/Restic-Studio">GitHub</a>
+        </nav>
+      </div>
+      <div class="notice" role="note">
+        This is a browser demo with a pretend repository and sample files. It cannot read your disk or run Restic, and nothing leaves this page.
+      </div>
+      <h1>Try a Restic backup</h1>
+      <p class="lede">A guided run through the real app's flow, using sample data:</p>
+      <ol class="steps">
+        <li>Pick the <strong>Documents</strong> profile and enter the password <code>demo</code>.</li>
+        <li>Choose <strong>Initialize empty repository</strong>, then <strong>Back Up Now</strong>. Try <strong>Preview backup</strong> first if you like.</li>
+        <li>Switch to <strong>Restore</strong>, open the snapshots, browse one and restore a file into a new folder.</li>
+      </ol>
+
+      <div class="win" id="win" role="application" aria-label="Restic Studio demo">
+        <div class="title">
+          <span aria-hidden="true">☰</span>
+          <strong>Restic Studio</strong>
+          <label class="sr" style="position: absolute; left: -9999px" for="theme">Theme</label>
+          <select id="theme">
+            <option value="system">System theme</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+        <div class="statusline" id="status" role="status" aria-live="polite">Ready. Health has not been verified.</div>
+        <div class="form">
+          <h2>Back up. Verify. Recover.</h2>
+          <p>Local backup and recovery • Restore always creates a new folder</p>
+          <p id="profileHelp">Saved profile (settings only; passwords are never saved)</p>
+          <div class="row">
+            <select id="profile" aria-labelledby="profileHelp"></select>
+            <button type="button" id="saveProfile">Save profile</button>
+            <button type="button" id="deleteProfile">Delete profile</button>
+          </div>
+          <label for="pname">Profile name</label>
+          <input id="pname" type="text" placeholder="Name to save these settings under" autocomplete="off" />
+          <label for="repo">Repository folder</label>
+          <input id="repo" type="text" placeholder="/path/to/backup-repository" autocomplete="off" />
+          <button type="button" id="chooseRepo">Choose external drive or destination…</button>
+          <div class="pw">
+            <input id="pw" type="password" placeholder="Repository password — kept only for this operation" autocomplete="off" aria-label="Repository password" />
+            <button type="button" id="eye" aria-label="Show password">👁</button>
+          </div>
+          <div class="seg" role="group" aria-label="Mode">
+            <button type="button" id="tabBackup" aria-pressed="true">Backup</button>
+            <button type="button" id="tabRestore" aria-pressed="false">Restore</button>
+          </div>
+
+          <div id="backupPane" class="form" style="padding: 0">
+            <label for="src">Folder to back up</label>
+            <input id="src" type="text" placeholder="/path/to/documents" autocomplete="off" />
+            <button type="button" id="chooseSrc">Choose source folder…</button>
+            <p>When backing up /, the repository folder plus virtual and temporary system folders are skipped. /home is skipped only when this repository already has a home snapshot from this host.</p>
+            <button type="button" id="init">Initialize empty repository</button>
+            <button type="button" id="backup" class="primary">Back Up Now</button>
+            <button type="button" id="check">Check repository</button>
+            <button type="button" id="dry">Preview backup (no snapshot)</button>
+          </div>
+
+          <div id="restorePane" class="form hide" style="padding: 0">
+            <button type="button" id="open">Open / refresh snapshots</button>
+            <label for="snapId">Snapshot ID</label>
+            <input id="snapId" type="text" placeholder="Select a snapshot below" readonly />
+            <ul class="snaps" id="snaps" role="listbox" aria-label="Snapshots"></ul>
+            <label for="inPath">File or directory inside snapshot</label>
+            <input id="inPath" type="text" placeholder="/absolute/path/as/shown/in/snapshot" autocomplete="off" />
+            <button type="button" id="browse">Browse snapshot directory</button>
+            <pre class="out hide" id="listing" aria-label="Snapshot contents"></pre>
+            <button type="button" id="restore" class="primary">Restore into a new folder</button>
+          </div>
+
+          <div id="progress" class="hide" role="group" aria-label="Progress">
+            <div class="bar"><i id="barFill"></i></div>
+            <pre class="out" id="log" aria-live="polite"></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="cta">
+        <a href="../#install">Install Restic Studio on Linux</a>
+        <a class="secondary" href="../">Back to the overview</a>
+      </div>
+    </div>
+
+    <script>
+      "use strict";
+      const PASSWORD = "demo";
+      const TREE = {
+        "/home/demo/Documents": ["Budget-2026.xlsx 48 KB", "Meeting-notes.md 3 KB", "Recipes.txt 2 KB", "Taxes-2025.pdf 212 KB", "Travel-plans.md 5 KB", "Photos/"],
+        "/home/demo/Documents/Photos": ["trip-01.jpg 3.1 MB", "trip-02.jpg 2.8 MB", "trip-03.jpg 3.4 MB"],
+        "/home/demo/Pictures": ["Screenshots/", "Wallpapers/", "avatar.png 64 KB"],
+      };
+      const PRESETS = {
+        Documents: { repo: "/media/demo/Backup Drive/restic-studio", src: "/home/demo/Documents" },
+        Pictures: { repo: "/media/demo/Backup Drive/pictures", src: "/home/demo/Pictures" },
+      };
+      const $ = (id) => document.getElementById(id);
+      const repos = {}; // repo path -> { snapshots: [{id,time,paths}] }
+      let saved = {};
+      try {
+        saved = JSON.parse(localStorage.getItem("restic-demo-profiles") || "{}") || {};
+      } catch {}
+      const profiles = () => ({ ...PRESETS, ...saved });
+      let busy = false;
+
+      const say = (m) => ($("status").textContent = m);
+      const rid = () => Array.from({ length: 8 }, () => "0123456789abcdef"[(Math.random() * 16) | 0]).join("");
+      const stamp = () => new Date().toISOString().replace(/\.\d+Z$/, "Z");
+
+      function fillProfiles(sel) {
+        const s = $("profile");
+        s.innerHTML = '<option value="">No profile selected</option>';
+        for (const n of Object.keys(profiles())) {
+          const o = document.createElement("option");
+          o.value = n;
+          o.textContent = n;
+          s.append(o);
+        }
+        s.value = sel || "";
+      }
+      fillProfiles();
+
+      $("profile").addEventListener("change", () => {
+        const n = $("profile").value;
+        if (!n) return;
+        const p = profiles()[n];
+        $("pname").value = n;
+        $("repo").value = p.repo;
+        $("src").value = p.src;
+        $("pw").value = "";
+        say(`Loaded profile ${n}. Enter the repository password to use it.`);
+      });
+      $("saveProfile").addEventListener("click", () => {
+        const n = $("pname").value.trim();
+        if (!n) return say("Give the profile a name first.");
+        saved[n] = { repo: $("repo").value.trim(), src: $("src").value.trim() };
+        try {
+          localStorage.setItem("restic-demo-profiles", JSON.stringify(saved));
+        } catch {}
+        fillProfiles(n);
+        say(`Saved profile ${n}. Settings only: the password is never saved.`);
+      });
+      $("deleteProfile").addEventListener("click", () => {
+        const n = $("profile").value;
+        if (!n) return say("Select a profile to delete.");
+        if (PRESETS[n] && !saved[n]) return say("The sample profiles stay in this demo.");
+        delete saved[n];
+        try {
+          localStorage.setItem("restic-demo-profiles", JSON.stringify(saved));
+        } catch {}
+        fillProfiles();
+        say(`Deleted profile ${n}.`);
+      });
+      const pick = (id, msg) => $(id).addEventListener("click", () => say(msg));
+      pick("chooseRepo", "In the real app this opens your system folder chooser, including external drives. In the demo, type a path or use a sample profile.");
+      pick("chooseSrc", "In the real app this opens your system folder chooser. In the demo, type a path or use a sample profile.");
+      $("eye").addEventListener("click", () => {
+        const show = $("pw").type === "password";
+        $("pw").type = show ? "text" : "password";
+        $("eye").setAttribute("aria-label", show ? "Hide password" : "Show password");
+      });
+      $("theme").addEventListener("change", () => {
+        const v = $("theme").value;
+        const dark = v === "dark" || (v === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+        $("win").classList.toggle("light", !dark);
+      });
+      $("theme").dispatchEvent(new Event("change"));
+      matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => $("theme").dispatchEvent(new Event("change")));
+
+      function mode(restore) {
+        $("backupPane").classList.toggle("hide", restore);
+        $("restorePane").classList.toggle("hide", !restore);
+        $("tabBackup").setAttribute("aria-pressed", String(!restore));
+        $("tabRestore").setAttribute("aria-pressed", String(restore));
+      }
+      $("tabBackup").addEventListener("click", () => mode(false));
+      $("tabRestore").addEventListener("click", () => mode(true));
+
+      // ---- pretend Restic ----
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      function needs(requirePassword = true) {
+        const repo = $("repo").value.trim();
+        if (!repo) return say("Enter a repository folder first."), null;
+        if (requirePassword && !$("pw").value) return say("Enter the repository password. In this demo it is: demo"), null;
+        return repo;
+      }
+      function unlock(repo) {
+        if (!repos[repo]) return say("No repository here yet. Choose Initialize empty repository first."), false;
+        if ($("pw").value !== PASSWORD) return say("Wrong password. In this demo it is: demo"), false;
+        return true;
+      }
+      async function job(title, lines, work) {
+        if (busy) return;
+        busy = true;
+        $("progress").classList.remove("hide");
+        const log = $("log");
+        log.textContent = "";
+        $("barFill").style.width = "0";
+        document.querySelectorAll(".win button").forEach((b) => (b.disabled = true));
+        say(title);
+        for (let i = 0; i < lines.length; i++) {
+          log.textContent += lines[i] + "\n";
+          log.scrollTop = log.scrollHeight;
+          $("barFill").style.width = Math.round(((i + 1) / lines.length) * 100) + "%";
+          await wait(260);
+        }
+        const done = work();
+        document.querySelectorAll(".win button").forEach((b) => (b.disabled = false));
+        $("pw").value = ""; // like the real app, the password is kept only for one operation
+        busy = false;
+        return done;
+      }
+      const files = () => {
+        const dir = $("src").value.trim() || "/home/demo/Documents";
+        return (TREE[dir] || TREE["/home/demo/Documents"]).filter((f) => !f.endsWith("/")).map((f) => `${dir}/${f.split(" ")[0]}`);
+      };
+
+      $("init").addEventListener("click", async () => {
+        const repo = needs();
+        if (!repo) return;
+        if (repos[repo]) return say("A repository already exists there. Nothing was changed.");
+        await job("Initializing repository…", ["created restic repository " + rid() + " at " + repo, "", "Remember the password. If you lose it, the data is unrecoverable."], () => {
+          repos[repo] = { snapshots: [] };
+          say("Repository initialized. Now choose Back Up Now.");
+        });
+      });
+      $("dry").addEventListener("click", async () => {
+        const repo = needs();
+        if (!repo || !unlock(repo)) return;
+        const f = files();
+        await job("Previewing backup…", [...f.map((x) => "new       " + x), "", `Would add ${f.length} files. No snapshot created.`], () => say("Preview finished. Nothing was written."));
+      });
+      $("backup").addEventListener("click", async () => {
+        const repo = needs();
+        if (!repo || !unlock(repo)) return;
+        const f = files();
+        const id = rid() + rid() + rid() + rid() + rid() + rid() + rid() + rid();
+        await job("Backing up…", [...f.map((x, i) => `[${i + 1}/${f.length}] ${x}`), "", `snapshot ${id.slice(0, 8)} saved`], () => {
+          repos[repo].snapshots.unshift({ id, time: stamp(), paths: [$("src").value.trim() || "/home/demo/Documents"] });
+          say(`Backup complete. Snapshot ${id.slice(0, 8)} created.`);
+        });
+      });
+      $("check").addEventListener("click", async () => {
+        const repo = needs();
+        if (!repo || !unlock(repo)) return;
+        await job("Checking repository…", ["using temporary cache", "create exclusive lock for repository", "load indexes", "check all packs", "check snapshots, trees and blobs", "no errors were found"], () => say("Repository structure is healthy."));
+      });
+
+      let chosen = null;
+      function renderSnaps(repo) {
+        const ul = $("snaps");
+        ul.innerHTML = "";
+        const list = repos[repo].snapshots;
+        if (!list.length) {
+          const li = document.createElement("li");
+          li.textContent = "No snapshots yet. Run a backup first.";
+          ul.append(li);
+          return;
+        }
+        for (const s of list) {
+          const li = document.createElement("li");
+          li.setAttribute("role", "option");
+          li.setAttribute("aria-selected", String(chosen === s.id));
+          li.textContent = `${s.id}  ${s.time}`;
+          li.addEventListener("click", () => {
+            chosen = s.id;
+            $("snapId").value = s.id;
+            $("inPath").value = s.paths[0];
+            renderSnaps(repo);
+          });
+          ul.append(li);
+        }
+      }
+      $("open").addEventListener("click", () => {
+        const repo = needs();
+        if (!repo || !unlock(repo)) return;
+        $("pw").value = "";
+        renderSnaps(repo);
+        say(repos[repo].snapshots.length ? "Snapshots loaded" : "Repository opened. It has no snapshots yet.");
+      });
+      $("browse").addEventListener("click", () => {
+        if (!chosen) return say("Select a snapshot first.");
+        const p = $("inPath").value.trim().replace(/\/$/, "");
+        const items = TREE[p];
+        const out = $("listing");
+        out.classList.remove("hide");
+        out.textContent = items ? items.map((x) => `${p}/${x}`).join("\n") : "Nothing listed at that path in this sample snapshot.";
+        say(items ? `Listed ${items.length} entries.` : "Path not found in the sample snapshot.");
+      });
+      $("restore").addEventListener("click", async () => {
+        if (!chosen) return say("Select a snapshot first.");
+        const p = $("inPath").value.trim();
+        if (!p) return say("Enter a file or folder inside the snapshot.");
+        const dest = `/home/demo/Restored/${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`;
+        await job("Restoring…", [`restoring ${p} from snapshot ${chosen.slice(0, 8)}`, "verifying restored data", "staging in a private folder", `publishing to ${dest}`], () =>
+          say(`Restored into the new folder ${dest}. Nothing that already existed was overwritten.`),
+        );
+      });
+    </script>
+  </body>
+</html>
