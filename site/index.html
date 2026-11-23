@@ -1041,5 +1041,92 @@ sudo apt install restic-studio</code></pre>
         box.appendChild(button);
       });
     </script>
+  <style data-lightbox>
+  .lb-trigger { cursor: zoom-in; }
+  .lb-trigger:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+  html.lb-open { overflow: hidden; }
+  dialog.lb { border: 0; padding: 0; background: transparent; color: #fff; width: 100vw; height: 100vh; max-width: none; max-height: none; overflow: hidden; }
+  dialog.lb::backdrop { background: rgba(0, 0, 0, 0.88); }
+  .lb-stage { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; width: 100%; height: 100%; padding: 56px 16px 20px; box-sizing: border-box; }
+  .lb-img { display: block; max-width: min(96vw, 1800px); max-height: calc(100vh - 128px); width: auto; height: auto; object-fit: contain; border-radius: 8px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); background: #111; }
+  .lb-caption { max-width: min(92vw, 900px); margin: 0; text-align: center; font-size: 15px; line-height: 1.45; color: #eee; }
+  .lb-count { font-size: 13px; color: #bbb; }
+  .lb-btn { position: absolute; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.16); color: #fff; font: 28px/1 system-ui, sans-serif; cursor: pointer; }
+  .lb-btn:hover { background: rgba(255, 255, 255, 0.28); }
+  .lb-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  .lb-close { top: 12px; right: 12px; }
+  .lb-prev { left: 12px; top: 50%; transform: translateY(-50%); }
+  .lb-next { right: 12px; top: 50%; transform: translateY(-50%); }
+  .lb-single .lb-prev, .lb-single .lb-next, .lb-single .lb-count { display: none; }
+  @media (max-width: 640px) { .lb-prev, .lb-next { top: auto; bottom: 12px; transform: none; } .lb-stage { padding-bottom: 68px; } }
+</style>
+<script data-lightbox>
+  (() => {
+    const imgs = [...document.querySelectorAll('figure.shot img, figure.workspace img')];
+    if (!imgs.length || typeof HTMLDialogElement !== 'function') return;
+
+    // Largest image available for a screenshot: the biggest srcset candidate that applies, else the plain src.
+    const largest = (img) => {
+      const link = img.closest('a[href]');
+      if (link && /\.(png|jpe?g|webp|avif|gif)(\?|$)/i.test(link.getAttribute('href'))) return link.href;
+      const sets = [];
+      const pic = img.closest('picture');
+      if (pic) for (const s of pic.querySelectorAll('source[srcset]')) if (!s.media || matchMedia(s.media).matches) sets.push(s.getAttribute('srcset'));
+      if (img.getAttribute('srcset')) sets.push(img.getAttribute('srcset'));
+      let best = { w: 0, url: img.currentSrc || img.src };
+      for (const set of sets) for (const part of set.split(',')) {
+        const [url, size] = part.trim().split(/\s+/);
+        const w = parseInt(size, 10) || 0;
+        if (url && w > best.w) best = { w, url: new URL(url, document.baseURI).href };
+      }
+      return best.url;
+    };
+    const captionOf = (img) => img.closest('figure')?.querySelector('figcaption')?.textContent.trim() || '';
+
+    const dlg = document.createElement('dialog');
+    dlg.className = 'lb';
+    dlg.setAttribute('aria-label', 'Screenshot viewer');
+    dlg.innerHTML = '<div class="lb-stage"><button type="button" class="lb-btn lb-close" aria-label="Close">&times;</button><button type="button" class="lb-btn lb-prev" aria-label="Previous screenshot">&lsaquo;</button><img class="lb-img" alt=""><p class="lb-caption"></p><span class="lb-count" aria-live="polite"></span><button type="button" class="lb-btn lb-next" aria-label="Next screenshot">&rsaquo;</button></div>';
+    document.body.append(dlg);
+    const $ = (s) => dlg.querySelector(s);
+    const view = $('.lb-img'), cap = $('.lb-caption'), count = $('.lb-count');
+    let index = 0, opener = null, token = 0;
+    dlg.classList.toggle('lb-single', imgs.length < 2);
+
+    const show = (i) => {
+      index = (i + imgs.length) % imgs.length;
+      const img = imgs[index], url = largest(img), mine = ++token;
+      view.alt = img.alt;
+      view.src = img.currentSrc || img.src; // thumbnail first, so the box opens instantly
+      const hi = new Image();
+      hi.onload = () => { if (mine === token) view.src = url; };
+      hi.src = url;
+      cap.textContent = captionOf(img);
+      cap.hidden = !cap.textContent;
+      count.textContent = imgs.length > 1 ? `${index + 1} / ${imgs.length}` : '';
+      for (const n of [imgs[(index + 1) % imgs.length], imgs[(index - 1 + imgs.length) % imgs.length]]) new Image().src = largest(n);
+    };
+    const open = (i, from) => { opener = from; show(i); document.documentElement.classList.add('lb-open'); dlg.showModal(); $('.lb-close').focus(); };
+
+    imgs.forEach((img, i) => {
+      img.classList.add('lb-trigger');
+      img.tabIndex = 0;
+      img.setAttribute('role', 'button');
+      img.setAttribute('aria-haspopup', 'dialog');
+      img.setAttribute('aria-label', 'View larger: ' + (img.alt || 'screenshot'));
+      img.addEventListener('click', (e) => { e.preventDefault(); open(i, img); });
+      img.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(i, img); } });
+    });
+    $('.lb-close').addEventListener('click', () => dlg.close());
+    $('.lb-prev').addEventListener('click', () => show(index - 1));
+    $('.lb-next').addEventListener('click', () => show(index + 1));
+    dlg.addEventListener('click', (e) => { if (e.target === dlg || e.target.classList.contains('lb-stage')) dlg.close(); });
+    dlg.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); show(index - 1); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); show(index + 1); }
+    });
+    dlg.addEventListener('close', () => { document.documentElement.classList.remove('lb-open'); view.removeAttribute('src'); opener?.focus(); });
+  })();
+</script>
   </body>
 </html>
