@@ -635,7 +635,7 @@
 .button.sponsor-cta { gap: 8px; }
 @media (max-width: 480px) { header { flex-wrap: wrap; row-gap: 10px; } .nav { flex-wrap: wrap; gap: 8px; } .nav .pill { padding: 7px 11px; } .nav a { font-size: 14px; } .support { padding: 28px 18px; } }
     </style>
-      <style>.hero{grid-template-columns:minmax(0,1fr)!important;gap:28px!important}.demo-frame{width:100%;margin:0}.demo-frame iframe{display:block;width:100%;border:1px solid rgba(128,128,128,.35);border-radius:12px;background:transparent;box-shadow:0 24px 60px -28px rgba(0,0,0,.45)}</style>
+      <style>.hero{grid-template-columns:minmax(0,1fr)!important;gap:28px!important}.demo-frame{width:100%;margin:0}.demo-frame iframe{display:block;width:100%;border:0;background:transparent}.demo-caption{margin:12px 0 0;font-size:13px;line-height:1.5;opacity:.75}</style>
   </head>
   <body>
     <a class="skip" href="#content">Skip to content</a>
@@ -680,6 +680,7 @@
             </ul>
           </div>
           <div class="demo-frame"><iframe id="demo-frame" src="./embed/" title="Interactive Restic Studio demo with sample data" loading="lazy" height="720"></iframe></div>
+          <p class="demo-caption">This is a browser demo with a pretend repository and sample files. It cannot read your disk or run Restic, and nothing leaves this page.</p>
         </section>
 <section id="what-is" class="features" aria-labelledby="what-is-title">
 <div class="section-head">
